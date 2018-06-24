@@ -5,6 +5,7 @@
 #include "Adafruit_MQTT.h"
 #include "Adafruit_MQTT_Client.h"
 #include <LiquidCrystal_I2C.h>
+#include <Ticker.h>
 
 ADC_MODE(ADC_VCC);
 
@@ -13,6 +14,8 @@ const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB C
 const byte tempSensAddr = 0x45; 
 const byte displayAddr = 0x27;
 const byte ledPin = D0;
+const byte displayOnButtonPin = D3;
+const unsigned long displayBacklightOnDelayS = 5;
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
 const int aioServerport = 8883; //ssl 8883, no ssl 1883;
@@ -43,25 +46,35 @@ Adafruit_MQTT_Publish mqttTempFeed = Adafruit_MQTT_Publish(&mqtt,tempfeed, MQTT_
 Adafruit_MQTT_Publish mqttHumFeed = Adafruit_MQTT_Publish(&mqtt,humfeed, MQTT_QOS_0);
 
 
+Ticker displayBacklightTicker;
+volatile bool displayBacklightOn = false;
+volatile unsigned long displayBacklightOnSince = 0;
+
 void MQTT_connect();
 void WIFI_connect(bool debugBlink);
 void verifyFingerprint();
 byte measureTemp();
 void lcdReset();
+void lcdTurnOnBacklight();
+void onDisplayButtonTriggered();
 
 void setup() {
     Serial.begin(115200);
     pinMode(ledPin, OUTPUT);
-    WiFi.mode(WIFI_STA);
+    pinMode(displayOnButtonPin, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(displayOnButtonPin), onDisplayButtonTriggered, FALLING);
     Wire.begin(/*sda*/D2, /*scl*/D1);
     long deepSleepMax = ESP.deepSleepMax();
     lcd.init();
-    lcd.backlight();
+    lcdTurnOnBacklight();
     lcdReset();
     lcd.home();
     lcd.print("Starting...");
     Serial.printf_P(PSTR("Starting... deep sleep max: %d"), deepSleepMax);
     Serial.println();
+
+    WiFi.persistent(false);
+    WiFi.mode(WIFI_STA);
     WIFI_connect(true);
     verifyFingerprint();
 }
@@ -143,9 +156,37 @@ byte measureTemp() {
 }
 
 
-// Function to connect and reconnect as necessary to the MQTT server.
-// Should be called in the loop function and it will take care if connecting.
+void onDisplayButtonTriggered() {
+    if (!displayBacklightOn) {
+        lcdTurnOnBacklight();
+    }
+}
+
+
+void lcdTurnOffBacklight() {
+    if (!displayBacklightOn) {
+        return;
+    }
+    lcd.noBacklight();
+    displayBacklightOn = false;
+    displayBacklightOnSince = 0;
+    displayBacklightTicker.detach();
+
+}
+
+
+void lcdTurnOnBacklight() {
+    if (displayBacklightOn) {
+        return;
+    }
+    lcd.backlight();
+    displayBacklightOn = true;
+    displayBacklightOnSince = millis();
+    displayBacklightTicker.attach(displayBacklightOnDelayS, lcdTurnOffBacklight);
+}
+
 void MQTT_connect() {
+
     int wifiStatus = WiFi.status();
     if(wifiStatus != WL_CONNECTED){
         Serial.println();
