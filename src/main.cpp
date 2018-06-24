@@ -47,7 +47,7 @@ void MQTT_connect();
 void WIFI_connect(bool debugBlink);
 void verifyFingerprint();
 byte measureTemp();
-
+void lcdReset();
 
 void setup() {
     Serial.begin(115200);
@@ -57,8 +57,8 @@ void setup() {
     long deepSleepMax = ESP.deepSleepMax();
     lcd.init();
     lcd.backlight();
-    lcd.clear();
-    lcd.setCursor(0,0);
+    lcdReset();
+    lcd.home();
     lcd.print("Starting...");
     Serial.printf_P(PSTR("Starting... deep sleep max: %d"), deepSleepMax);
     Serial.println();
@@ -67,23 +67,30 @@ void setup() {
 }
 
 int x = 0;
+bool displayingTemp = false;
 void loop() {
     MQTT_connect();
     measurements.voltage = ESP.getVcc() / 1024.00f;
+    
     
     byte measureRes = measureTemp(); 
     if (measureRes != 0) {
         Serial.println(F("Unable to measure temperature"));
         Serial.println(measureRes);
     } else {
-        lcd.clear();
-        lcd.setCursor(0,0);
-        lcd.print(F("Temp: "));
-        lcd.print(measurements.temperature);
-        lcd.setCursor(0,1);
-        lcd.print(F("Hum: "));
-        lcd.print(measurements.humidity);
-        lcd.print(F(" %"));
+        if (!displayingTemp) {
+            lcdReset();
+            displayingTemp = true;
+            lcd.setCursor(0,0);
+            lcd.print(F("Temp: "));
+            lcd.setCursor(0,1);
+            lcd.print(F("Hum: "));
+        }
+        lcd.setCursor(10,0);
+        lcd.printf_P(PSTR("%2.1f \337"), measurements.temperature);
+        lcd.setCursor(10,1);
+        lcd.printf_P(PSTR("%2.1f %%"), measurements.humidity);
+
         Serial.print(F("Sending measurements, temp: "));
         Serial.print(measurements.temperature);
         Serial.print(F(", hum: "));
@@ -166,7 +173,7 @@ void MQTT_connect() {
     uint8_t retries = 3;
     while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
         Serial.println(mqtt.connectErrorString(ret));
-        Serial.println(F(" Retrying MQTT connection in 5 seconds..."));
+        Serial.println(F("Retr MQTT connection in 5 seconds..."));
         mqtt.disconnect();
         delay(5000);  // wait 5 seconds
         retries--;
@@ -184,10 +191,16 @@ void MQTT_connect() {
     }
 }
 
+void lcdReset() {
+    lcd.clear();
+    displayingTemp = false;
+}
+
 void WIFI_connect(bool debugBlink) {
     Serial.print(FPSTR(msgWifiConnecting));
     Serial.println(ssid);
-    lcd.clear();
+
+    lcdReset();
     lcd.home();
     lcd.print(FPSTR(msgWifiConnecting));
     lcd.setCursor(0,1);
