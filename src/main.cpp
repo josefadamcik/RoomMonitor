@@ -16,7 +16,8 @@ const byte displayAddr = 0x27;
 const byte ledPin = D0;
 const byte displayOnButtonPin = D3;
 //const unsigned long mainLoopDelayMs = 10 * 1000; //10s
-const unsigned long mainLoopDelayMs = 5 * 60 * 1000; //5m
+const unsigned long mainLoopDelayMs = 2 * 60 * 1000; //2m
+//const unsigned long mainLoopDelayMs = 5 * 60 * 1000; //5m
 const unsigned long displayBacklightOnDelayS = 5;
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
@@ -44,9 +45,9 @@ LiquidCrystal_I2C lcd(displayAddr, 16, 2);
 WiFiClientSecure client;
 //WiFiClient client;
 Adafruit_MQTT_Client mqtt(&client, aioServer, aioServerport, aioUsername, aioKey);
-Adafruit_MQTT_Publish mqttTempFeed = Adafruit_MQTT_Publish(&mqtt,tempfeed, MQTT_QOS_0);
-Adafruit_MQTT_Publish mqttHumFeed = Adafruit_MQTT_Publish(&mqtt,humfeed, MQTT_QOS_0);
-Adafruit_MQTT_Publish mqttVccFeed = Adafruit_MQTT_Publish(&mqtt,vccfeed, MQTT_QOS_0);
+Adafruit_MQTT_Publish mqttTempFeed = Adafruit_MQTT_Publish(&mqtt,tempfeed, MQTT_QOS_1);
+Adafruit_MQTT_Publish mqttHumFeed = Adafruit_MQTT_Publish(&mqtt,humfeed, MQTT_QOS_1);
+Adafruit_MQTT_Publish mqttVccFeed = Adafruit_MQTT_Publish(&mqtt,vccfeed, MQTT_QOS_1);
 
 
 Ticker displayBacklightTicker;
@@ -293,5 +294,7 @@ void verifyFingerprint() {
     Serial.println(F("Connection insecure!"));
     while(1);
   }
+
+  client.stop(); //otherwise the MQTT.connected() will return true
 
 }
