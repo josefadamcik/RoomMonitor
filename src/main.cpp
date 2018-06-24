@@ -1,31 +1,42 @@
 #include <Arduino.h>
 #include "ESP8266WiFi.h"
+#include "Wire.h"
 #include "keys.h" //this file is not versioned and should contain only ssid and password 
 #include "Adafruit_MQTT.h"
 #include "Adafruit_MQTT_Client.h"
 
-#define AIO_SSL_FINGERPRINT "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18"
+const char aioSslFingreprint[] "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18";
 
-const char aio_server[] = "io.adafruit.com";
-//const char aio_server[] = "192.168.178.29";
-const int aio_serverport = 8883; //ssl 8883, no ssl 1883;
+const byte tempSensAddr = 0x45; 
+const int ledPin = D0;
+const char aioServer[] = "io.adafruit.com";
+//const char aioServer[] = "192.168.178.29";
+const int aioServerport = 8883; //ssl 8883, no ssl 1883;
 
 const char ssid[] = MYSSID; //put #define MYSSID "xyz" in keys.h
 const char password[] = MYPASS; //put #define MYPASS "blf" in keys.h
-const char aio_username[] = AIO_USERNAME;
-const char aio_key[] = AIO_KEY;
-const char feed[] = "josefadamcik/feeds/test";
+const char aioUsername[] = AIO_USERNAME; //put #define AIO_USERNAME "xyz" in keys.h
+const char aioKey[] = AIO_KEY; //put #define AIO_KEY "xyz" in keys.h
+const char tempfeed[] = AIO_USERNAME "/feeds/room-monitor.temperature";
+const char humfeed[] = AIO_USERNAME "/feeds/room-monitor.humidity";
+
+struct Measurements {
+    float temperature = 0.0;
+    float humidity = 0.0;
+} measurements;
 
 
 WiFiClientSecure client;
 //WiFiClient client;
-Adafruit_MQTT_Client mqtt(&client, aio_server, aio_serverport, aio_username, aio_key);
-Adafruit_MQTT_Publish mqttFeed = Adafruit_MQTT_Publish(&mqtt,feed, MQTT_QOS_1);
+Adafruit_MQTT_Client mqtt(&client, aioServer, aioServerport, aioUsername, aioKey);
+Adafruit_MQTT_Publish mqttTempFeed = Adafruit_MQTT_Publish(&mqtt,tempfeed, MQTT_QOS_0);
+Adafruit_MQTT_Publish mqttHumFeed = Adafruit_MQTT_Publish(&mqtt,humfeed, MQTT_QOS_0);
 
 
 void MQTT_connect();
 void WIFI_connect(bool debugBlink);
-//void verifyFingerprint();
+void verifyFingerprint();
+byte measureTemp();
 
 void WIFI_connect(bool debugBlink) {
     Serial.print(F("Your are connecting to;"));
@@ -33,11 +44,11 @@ void WIFI_connect(bool debugBlink) {
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
         if (debugBlink) {
-            digitalWrite(16, HIGH);
+            digitalWrite(ledPin, HIGH);
         }
         delay(250);
         if (debugBlink) {
-            digitalWrite(16, LOW);
+            digitalWrite(ledPin, LOW);
         }
         delay(250);
         Serial.print(".");
@@ -49,30 +60,73 @@ void WIFI_connect(bool debugBlink) {
 
 void setup() {
     Serial.begin(115200);
-    pinMode(16, OUTPUT);
+    pinMode(ledPin, OUTPUT);
     WiFi.mode(WIFI_STA);
+    Wire.begin(/*sda*/D2, /*scl*/D1);
     WIFI_connect(true);
-    //verifyFingerprint();
+    verifyFingerprint();
 }
 
 int x = 0;
 void loop() {
     MQTT_connect();
-    
     // Now we can publish stuff!
-    Serial.print(F("\nSending photocell val "));
-    Serial.print(x);
-    Serial.print("...");
-    
-    if (! mqttFeed.publish(x++)) {
-        Serial.println(F("Failed"));
+    byte measureRes = measureTemp(); 
+    if (measureRes != 0) {
+        Serial.println(F("Unable to measure temperature"));
+        Serial.println(measureRes);
     } else {
-        Serial.println(F("OK!"));
+        Serial.print(F("Sending measurements, temp: "));
+        Serial.print(measurements.temperature);
+        Serial.print(F(", hum: "));
+        Serial.print(measurements.humidity);
+        Serial.print(F("... "));
+        bool succ = mqttTempFeed.publish(measurements.temperature);
+        succ = mqttHumFeed.publish(measurements.humidity) && succ;
+        if (succ) {
+            Serial.println(F("OK!"));
+        } else {
+            Serial.println(F("Failed"));
+        }
     }
+    
     // if(! mqtt.ping()) {
     //     mqtt.disconnect();
     // }
-    delay(3000); 
+    delay(5000); 
+}
+
+byte measureTemp() {
+    unsigned int data[6];
+
+    // Start I2C Transmission
+    Wire.beginTransmission(tempSensAddr);
+    // Send measurement command
+    Wire.write(0x2C);
+    Wire.write(0x06);
+    // Stop I2C transmission
+    if (Wire.endTransmission() != 0)  {
+        return 1;
+    }
+    delay(500);
+    // Request 6 bytes of data
+    Wire.requestFrom(tempSensAddr, 6);
+    // Read 6 bytes of data
+    // cTemp msb, cTemp lsb, cTemp crc, humidity msb, humidity lsb, humidity crc
+    for (int i=0;i<6;i++) {
+        data[i]=Wire.read();
+    };
+
+    delay(50);
+
+    if (Wire.available() != 0) {
+        return 2;
+    }
+    // Convert the data
+    measurements.temperature = ((((data[0] * 256.0) + data[1]) * 175) / 65535.0) - 45;
+    measurements.humidity = ((((data[3] * 256.0) + data[4]) * 100) / 65535.0);
+
+    return 0;
 }
 
 
@@ -101,9 +155,7 @@ void MQTT_connect() {
     if (mqtt.connected()) {
         return;
     }
-
     Serial.print(F("Connecting to MQTT... "));
-    //Serial.print(feed);
 
     uint8_t retries = 3;
     while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
@@ -128,23 +180,23 @@ void MQTT_connect() {
 
 
 
-// void verifyFingerprint() {
+void verifyFingerprint() {
 
-//   const char* host = aio_server;
+  const char* host = aioServer;
 
-//   Serial.print("Connecting to ");
-//   Serial.println(host);
+  Serial.print("Connecting to ");
+  Serial.println(host);
 
-//   if (! client.connect(host, aio_serverport)) {
-//     Serial.println("Connection failed. Halting execution.");
-//     while(1);
-//   }
+  if (! client.connect(host, aioServerport)) {
+    Serial.println("Connection failed. Halting execution.");
+    while(1);
+  }
 
-//   if (client.verify(AIO_SSL_FINGERPRINT, host)) {
-//     Serial.println("Connection secure.");
-//   } else {
-//     Serial.println("Connection insecure! Halting execution.");
-//     while(1);
-//   }
+  if (client.verify(aioSslFingreprint, host)) {
+    Serial.println("Connection secure.");
+  } else {
+    Serial.println("Connection insecure! Halting execution.");
+    while(1);
+  }
 
-// }
+}
