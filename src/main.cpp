@@ -15,6 +15,8 @@ const byte tempSensAddr = 0x45;
 const byte displayAddr = 0x27;
 const byte ledPin = D0;
 const byte displayOnButtonPin = D3;
+//const unsigned long mainLoopDelayMs = 10 * 1000; //10s
+const unsigned long mainLoopDelayMs = 5 * 60 * 1000; //5m
 const unsigned long displayBacklightOnDelayS = 5;
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
@@ -26,7 +28,7 @@ const char aioUsername[] = AIO_USERNAME; //put #define AIO_USERNAME "xyz" in key
 const char aioKey[] = AIO_KEY; //put #define AIO_KEY "xyz" in keys.h
 const char tempfeed[] = AIO_USERNAME "/feeds/room-monitor.temperature";
 const char humfeed[] = AIO_USERNAME "/feeds/room-monitor.humidity";
-const char battery[] = AIO_USERNAME "/feeds/room-monitor.battery";
+const char vccfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc";
 
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 
@@ -44,6 +46,7 @@ WiFiClientSecure client;
 Adafruit_MQTT_Client mqtt(&client, aioServer, aioServerport, aioUsername, aioKey);
 Adafruit_MQTT_Publish mqttTempFeed = Adafruit_MQTT_Publish(&mqtt,tempfeed, MQTT_QOS_0);
 Adafruit_MQTT_Publish mqttHumFeed = Adafruit_MQTT_Publish(&mqtt,humfeed, MQTT_QOS_0);
+Adafruit_MQTT_Publish mqttVccFeed = Adafruit_MQTT_Publish(&mqtt,vccfeed, MQTT_QOS_0);
 
 
 Ticker displayBacklightTicker;
@@ -57,6 +60,7 @@ byte measureTemp();
 void lcdReset();
 void lcdTurnOnBacklight();
 void onDisplayButtonTriggered();
+float measureVccVoltage();
 
 void setup() {
     Serial.begin(115200);
@@ -66,13 +70,12 @@ void setup() {
     Wire.begin(/*sda*/D2, /*scl*/D1);
     long deepSleepMax = ESP.deepSleepMax();
     lcd.init();
-    lcdTurnOnBacklight();
     lcdReset();
     lcd.home();
-    lcd.print("Starting...");
+    lcd.print(F("Starting..."));
+    lcdTurnOnBacklight();
     Serial.printf_P(PSTR("Starting... deep sleep max: %d"), deepSleepMax);
     Serial.println();
-
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
     WIFI_connect(true);
@@ -83,10 +86,10 @@ int x = 0;
 bool displayingTemp = false;
 void loop() {
     MQTT_connect();
-    measurements.voltage = ESP.getVcc() / 1024.00f;
-    
-    
+
+    measurements.voltage = measureVccVoltage();
     byte measureRes = measureTemp(); 
+
     if (measureRes != 0) {
         Serial.println(F("Unable to measure temperature"));
         Serial.println(measureRes);
@@ -113,6 +116,7 @@ void loop() {
         Serial.print(F("... "));
         bool succ = mqttTempFeed.publish(measurements.temperature);
         succ = mqttHumFeed.publish(measurements.humidity) && succ;
+        succ = mqttVccFeed.publish(measurements.voltage) && succ;
         if (succ) {
             Serial.println(F("OK!"));
         } else {
@@ -123,7 +127,11 @@ void loop() {
     // if(! mqtt.ping()) {
     //     mqtt.disconnect();
     // }
-    delay(10000); 
+    delay(mainLoopDelayMs); 
+}
+
+float measureVccVoltage() {
+    return ESP.getVcc() / 1024.00f;
 }
 
 byte measureTemp() {
@@ -240,7 +248,6 @@ void lcdReset() {
 void WIFI_connect(bool debugBlink) {
     Serial.print(FPSTR(msgWifiConnecting));
     Serial.println(ssid);
-
     lcdReset();
     lcd.home();
     lcd.print(FPSTR(msgWifiConnecting));
@@ -248,6 +255,7 @@ void WIFI_connect(bool debugBlink) {
     lcd.print(ssid);
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
+        lcdTurnOnBacklight();
         if (debugBlink) {
             digitalWrite(ledPin, HIGH);
         }
