@@ -124,7 +124,7 @@ void loop() {
             succ = mqttVccFeed.publish(measurements.voltage) && succ;
             //success, we will reset counter, failur wont'
             if (succ) {
-                measurements.reportIn = publishEveryNMeasurements;
+                measurements.reportIn = publishEveryNMeasurements - 1;
                 Serial.println(F("OK!"));
             } else {
                 Serial.println(F("Failed"));
