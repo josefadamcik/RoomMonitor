@@ -16,8 +16,8 @@ const byte displayAddr = 0x27;
 const byte ledPin = D0;
 const byte displayOnButtonPin = D3;
 //const unsigned long mainLoopDelayMs = 10 * 1000; //10s
-const unsigned long mainLoopDelayMs = 2 * 60 * 1000; //2m
-//const unsigned long mainLoopDelayMs = 5 * 60 * 1000; //5m
+//const unsigned long mainLoopDelayMs = 2 * 60 * 1000; //2m
+const unsigned long mainLoopDelayMs = 5 * 60 * 1000; //5m
 const unsigned long displayBacklightOnDelayS = 5;
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
@@ -54,8 +54,10 @@ Ticker displayBacklightTicker;
 volatile bool displayBacklightOn = false;
 volatile unsigned long displayBacklightOnSince = 0;
 
-void MQTT_connect();
-void WIFI_connect(bool debugBlink);
+void MQTTConect();
+void WIFIConect(bool debugBlink);
+void WIFIshowConnecting();
+void WIFIShowConnected();
 void verifyFingerprint();
 byte measureTemp();
 void lcdReset();
@@ -79,14 +81,14 @@ void setup() {
     Serial.println();
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
-    WIFI_connect(true);
+    WIFIConect(true);
     verifyFingerprint();
 }
 
 int x = 0;
 bool displayingTemp = false;
 void loop() {
-    MQTT_connect();
+    MQTTConect();
 
     measurements.voltage = measureVccVoltage();
     byte measureRes = measureTemp(); 
@@ -194,29 +196,35 @@ void lcdTurnOnBacklight() {
     displayBacklightTicker.attach(displayBacklightOnDelayS, lcdTurnOffBacklight);
 }
 
-void MQTT_connect() {
-
+void MQTTConect() {
     int wifiStatus = WiFi.status();
     if(wifiStatus != WL_CONNECTED){
         Serial.println();
         Serial.print(F("WiFi not connected, status: "));
         Serial.print(wifiStatus);
         Serial.println();
+        WIFIshowConnecting();
         WiFi.reconnect();
         while (WiFi.status() != WL_CONNECTED) {
-            digitalWrite(16, HIGH);
+            digitalWrite(ledPin, HIGH);
             delay(250);
-            digitalWrite(16, LOW);
+            digitalWrite(ledPin, LOW);
             delay(250);
             Serial.print(WiFi.status());
-        }   
+        }
+        WIFIShowConnected();
     }  
 
     int8_t ret;
 
-    // Stop if already connected.
+    // Stop if already connected, but double check with ping
     if (mqtt.connected()) {
-        return;
+        if (mqtt.ping()) {
+            return;
+        } else {
+            Serial.println(F("Connected was true, but ping returned false"));
+            mqtt.disconnect();
+        }
     }
     Serial.print(F("Connecting to MQTT... "));
 
@@ -243,17 +251,34 @@ void MQTT_connect() {
 
 void lcdReset() {
     lcd.clear();
+    lcd.home();
     displayingTemp = false;
 }
 
-void WIFI_connect(bool debugBlink) {
+void WIFIshowConnecting() {
     Serial.print(FPSTR(msgWifiConnecting));
     Serial.println(ssid);
     lcdReset();
-    lcd.home();
     lcd.print(FPSTR(msgWifiConnecting));
     lcd.setCursor(0,1);
     lcd.print(ssid);
+    lcdTurnOnBacklight();
+}
+
+void WIFIShowConnected() {
+    Serial.print(F("Your ESP is connected! Your IP address is: "));  
+    Serial.println(WiFi.localIP());      
+    lcdReset();
+    lcd.print(F("IP Address:"));
+    lcd.setCursor(0,1);
+    lcd.print(WiFi.localIP());
+    lcdTurnOnBacklight();
+    delay(1000);
+    lcdReset();
+}
+
+void WIFIConect(bool debugBlink) {
+    WIFIshowConnecting();    
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
         lcdTurnOnBacklight();
@@ -268,16 +293,8 @@ void WIFI_connect(bool debugBlink) {
         Serial.print(".");
     }   
     Serial.println(F("Setup done"));
-    Serial.print(F("Your ESP is connected! Your IP address is: "));  
-    Serial.println(WiFi.localIP());      
-
-    lcd.clear();
-    lcd.home();
-    lcd.print(F("IP Address:"));
-    lcd.setCursor(0,1);
-    lcd.print(WiFi.localIP());
-    delay(1000);
-    lcd.clear();
+    WIFIShowConnected();
+    verifyFingerprint();
 }
 
 
