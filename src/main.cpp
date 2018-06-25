@@ -17,7 +17,8 @@ const byte ledPin = D0;
 const byte displayOnButtonPin = D3;
 //const unsigned long mainLoopDelayMs = 10 * 1000; //10s
 //const unsigned long mainLoopDelayMs = 2 * 60 * 1000; //2m
-const unsigned long mainLoopDelayMs = 5 * 60 * 1000; //5m
+const unsigned long measurmentDelay = 1 * 60 * 1000; //1m
+const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
 const unsigned long displayBacklightOnDelayS = 5;
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
@@ -37,6 +38,7 @@ struct Measurements {
     float temperature = 0.0;
     float humidity = 0.0;
     float voltage = 0.0;
+    int reportIn = 0;
 } measurements;
 
 
@@ -82,7 +84,6 @@ void setup() {
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
     WIFIConect(true);
-    verifyFingerprint();
 }
 
 int x = 0;
@@ -110,27 +111,34 @@ void loop() {
         lcd.setCursor(10,1);
         lcd.printf_P(PSTR("%2.1f %%"), measurements.humidity);
 
-        Serial.print(F("Sending measurements, temp: "));
-        Serial.print(measurements.temperature);
-        Serial.print(F(", hum: "));
-        Serial.print(measurements.humidity);
-        Serial.print(F(", vcc: "));
-        Serial.print(measurements.voltage);
-        Serial.print(F("... "));
-        bool succ = mqttTempFeed.publish(measurements.temperature);
-        succ = mqttHumFeed.publish(measurements.humidity) && succ;
-        succ = mqttVccFeed.publish(measurements.voltage) && succ;
-        if (succ) {
-            Serial.println(F("OK!"));
+        if (measurements.reportIn == 0) { //downcounter reached zero, we are publishing to mqtt
+            Serial.print(F("Sending measurements, temp: "));
+            Serial.print(measurements.temperature);
+            Serial.print(F(", hum: "));
+            Serial.print(measurements.humidity);
+            Serial.print(F(", vcc: "));
+            Serial.print(measurements.voltage);
+            Serial.print(F("... "));
+            bool succ = mqttTempFeed.publish(measurements.temperature);
+            succ = mqttHumFeed.publish(measurements.humidity) && succ;
+            succ = mqttVccFeed.publish(measurements.voltage) && succ;
+            //success, we will reset counter, failur wont'
+            if (succ) {
+                measurements.reportIn = publishEveryNMeasurements;
+                Serial.println(F("OK!"));
+            } else {
+                Serial.println(F("Failed"));
+            }
         } else {
-            Serial.println(F("Failed"));
+            //count down
+            measurements.reportIn--;
         }
     }
     
     // if(! mqtt.ping()) {
     //     mqtt.disconnect();
     // }
-    delay(mainLoopDelayMs); 
+    delay(measurmentDelay); 
 }
 
 float measureVccVoltage() {
@@ -213,6 +221,7 @@ void MQTTConect() {
             Serial.print(WiFi.status());
         }
         WIFIShowConnected();
+        verifyFingerprint();
     }  
 
     int8_t ret;
@@ -312,6 +321,7 @@ void verifyFingerprint() {
     while(1);
   }
 
-  client.stop(); //otherwise the MQTT.connected() will return true
+  client.stop(); //otherwise the MQTT.connected() will return true, because the implementation
+  // just asks the client if there is a connectioni. It actully doesn't check if there was a mqtt connection established.
 
 }
