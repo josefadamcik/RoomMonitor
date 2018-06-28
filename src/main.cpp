@@ -7,17 +7,15 @@
 #include <LiquidCrystal_I2C.h>
 #include <Ticker.h>
 
-ADC_MODE(ADC_VCC);
-
 const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18";
 
 const byte tempSensAddr = 0x45; 
 const byte displayAddr = 0x27;
 const byte ledPin = D0;
 const byte displayOnButtonPin = D3;
-//const unsigned long mainLoopDelayMs = 10 * 1000; //10s
-//const unsigned long mainLoopDelayMs = 2 * 60 * 1000; //2m
-const unsigned long measurmentDelay = 1 * 60 * 1000; //1m
+const unsigned long measurmentDelay = 30 * 60 * 1000; //30s
+
+//const unsigned long measurmentDelay = 1 * 60 * 1000; //1m
 const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
 const unsigned long displayBacklightOnDelayS = 5;
 const char aioServer[] = "io.adafruit.com";
@@ -31,6 +29,8 @@ const char aioKey[] = AIO_KEY; //put #define AIO_KEY "xyz" in keys.h
 const char tempfeed[] = AIO_USERNAME "/feeds/room-monitor.temperature";
 const char humfeed[] = AIO_USERNAME "/feeds/room-monitor.humidity";
 const char vccfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc";
+const char vccrawfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc-raw";
+
 
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 
@@ -38,6 +38,7 @@ struct Measurements {
     float temperature = 0.0;
     float humidity = 0.0;
     float voltage = 0.0;
+    int voltageRaw = 0;
     int reportIn = 0;
 } measurements;
 
@@ -50,6 +51,7 @@ Adafruit_MQTT_Client mqtt(&client, aioServer, aioServerport, aioUsername, aioKey
 Adafruit_MQTT_Publish mqttTempFeed = Adafruit_MQTT_Publish(&mqtt,tempfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttHumFeed = Adafruit_MQTT_Publish(&mqtt,humfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttVccFeed = Adafruit_MQTT_Publish(&mqtt,vccfeed, MQTT_QOS_1);
+Adafruit_MQTT_Publish mqttVccRawFeed = Adafruit_MQTT_Publish(&mqtt,vccrawfeed, MQTT_QOS_1);
 
 
 Ticker displayBacklightTicker;
@@ -91,7 +93,9 @@ bool displayingTemp = false;
 void loop() {
     MQTTConect();
 
-    measurements.voltage = measureVccVoltage();
+    measurements.voltageRaw = analogRead(A0);
+    //measurements.voltage = (measurements.voltageRaw / 1024.0f ) * 3.3f; //0-3.3, there's internal voltage divider 100k/220k
+    measurements.voltage = (measurements.voltageRaw / 1024.0f ) * 2.81f * 2.266f; //0-6.6v, external voltage divider 220/(680 + internal divider in paralel) 
     byte measureRes = measureTemp(); 
 
     if (measureRes != 0) {
@@ -118,10 +122,13 @@ void loop() {
             Serial.print(measurements.humidity);
             Serial.print(F(", vcc: "));
             Serial.print(measurements.voltage);
+            Serial.print(F(", vcc raw: "));
+            Serial.print(measurements.voltageRaw);
             Serial.print(F("... "));
             bool succ = mqttTempFeed.publish(measurements.temperature);
             succ = mqttHumFeed.publish(measurements.humidity) && succ;
             succ = mqttVccFeed.publish(measurements.voltage) && succ;
+            succ = mqttVccRawFeed.publish(measurements.voltageRaw) && succ;
             //success, we will reset counter, failur wont'
             if (succ) {
                 measurements.reportIn = publishEveryNMeasurements - 1;
@@ -139,10 +146,6 @@ void loop() {
     //     mqtt.disconnect();
     // }
     delay(measurmentDelay); 
-}
-
-float measureVccVoltage() {
-    return ESP.getVcc() / 1024.00f;
 }
 
 byte measureTemp() {
