@@ -11,9 +11,8 @@ const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB C
 
 const byte tempSensAddr = 0x45; 
 const byte displayAddr = 0x27;
-const byte ledPin = D0;
 const byte displayOnButtonPin = D3;
-const unsigned long measurmentDelay = 30 * 60 * 1000; //30s
+const unsigned long measurmentDelayMs = 10 * 1000; //10s
 
 //const unsigned long measurmentDelay = 1 * 60 * 1000; //1m
 const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
@@ -39,9 +38,13 @@ struct Measurements {
     float humidity = 0.0;
     float voltage = 0.0;
     int voltageRaw = 0;
-    int reportIn = 0;
+    uint32_t reportIn = 0;
 } measurements;
 
+struct PersistentState {
+
+} state;
+bool displayingTemp = false;
 
 LiquidCrystal_I2C lcd(displayAddr, 16, 2);
 
@@ -57,8 +60,11 @@ Adafruit_MQTT_Publish mqttVccRawFeed = Adafruit_MQTT_Publish(&mqtt,vccrawfeed, M
 Ticker displayBacklightTicker;
 volatile bool displayBacklightOn = false;
 volatile unsigned long displayBacklightOnSince = 0;
+boolean coldStart = true;
+
 
 void MQTTConect();
+void MQTTDisconnect();
 void WIFIConect(bool debugBlink);
 void WIFIshowConnecting();
 void WIFIShowConnected();
@@ -67,32 +73,44 @@ byte measureTemp();
 void lcdReset();
 void lcdTurnOnBacklight();
 void onDisplayButtonTriggered();
-float measureVccVoltage();
+
 
 void setup() {
     Serial.begin(115200);
-    pinMode(ledPin, OUTPUT);
+    Serial.println();
+    uint32_t control;
+    
+    ESP.rtcUserMemoryRead(0, &control, sizeof(uint32_t));
+    Serial.print("setup found, control: ");
+    Serial.print(control);
+    if (control == 0) {
+        coldStart = false;
+        ESP.rtcUserMemoryRead(4, &measurements.reportIn, sizeof(uint32_t));
+        Serial.print(", reportIn: ");
+        Serial.print(measurements.reportIn);
+    }
+    Serial.println();
+   
     pinMode(displayOnButtonPin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(displayOnButtonPin), onDisplayButtonTriggered, FALLING);
     Wire.begin(/*sda*/D2, /*scl*/D1);
     long deepSleepMax = ESP.deepSleepMax();
     lcd.init();
-    lcdReset();
-    lcd.home();
-    lcd.print(F("Starting..."));
-    lcdTurnOnBacklight();
+    if (coldStart) {
+        lcdReset();
+        lcd.home();
+        lcd.print(F("Starting..."));
+        lcdTurnOnBacklight();
+    }
     Serial.printf_P(PSTR("Starting... deep sleep max: %d"), deepSleepMax);
     Serial.println();
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
-    WIFIConect(true);
 }
 
-int x = 0;
-bool displayingTemp = false;
-void loop() {
-    MQTTConect();
 
+
+void loop() {
     measurements.voltageRaw = analogRead(A0);
     //measurements.voltage = (measurements.voltageRaw / 1024.0f ) * 3.3f; //0-3.3, there's internal voltage divider 100k/220k
     measurements.voltage = (measurements.voltageRaw / 1024.0f ) * 2.81f * 2.266f; //0-6.6v, external voltage divider 220/(680 + internal divider in paralel) 
@@ -116,6 +134,7 @@ void loop() {
         lcd.printf_P(PSTR("%2.1f %%"), measurements.humidity);
 
         if (measurements.reportIn == 0) { //downcounter reached zero, we are publishing to mqtt
+            MQTTConect();
             Serial.print(F("Sending measurements, temp: "));
             Serial.print(measurements.temperature);
             Serial.print(F(", hum: "));
@@ -136,16 +155,21 @@ void loop() {
             } else {
                 Serial.println(F("Failed"));
             }
+            MQTTDisconnect();
         } else {
             //count down
             measurements.reportIn--;
         }
     }
     
-    // if(! mqtt.ping()) {
-    //     mqtt.disconnect();
-    // }
-    delay(measurmentDelay); 
+    uint32_t* persistent = (uint32_t*)&measurements;
+//    char* my_s_bytes = reinterpret_cast<char*>(&my_s);
+    //ESP.rtcUserMemoryWrite(0, persistent, sizeof(persistent));
+    uint32_t zero = 0;
+    ESP.rtcUserMemoryWrite(0, &zero, sizeof(uint32_t));
+    ESP.rtcUserMemoryWrite(4, &measurements.reportIn, sizeof(uint32_t));
+    ESP.deepSleep(measurmentDelayMs * 1000, RF_NO_CAL);
+    //delay(measurmentDelayS); 
 }
 
 byte measureTemp() {
@@ -217,9 +241,7 @@ void MQTTConect() {
         WIFIshowConnecting();
         WiFi.reconnect();
         while (WiFi.status() != WL_CONNECTED) {
-            digitalWrite(ledPin, HIGH);
             delay(250);
-            digitalWrite(ledPin, LOW);
             delay(250);
             Serial.print(WiFi.status());
         }
@@ -261,6 +283,16 @@ void MQTTConect() {
     }
 }
 
+void MQTTDisconnect() {
+    if (mqtt.connected()) {
+        mqtt.disconnect();
+    }
+    int wifiStatus = WiFi.status();
+    if(wifiStatus == WL_CONNECTED) {
+        WiFi.disconnect();
+    }
+}
+
 void lcdReset() {
     lcd.clear();
     lcd.home();
@@ -274,7 +306,7 @@ void WIFIshowConnecting() {
     lcd.print(FPSTR(msgWifiConnecting));
     lcd.setCursor(0,1);
     lcd.print(ssid);
-    lcdTurnOnBacklight();
+    //lcdTurnOnBacklight();
 }
 
 void WIFIShowConnected() {
@@ -284,7 +316,7 @@ void WIFIShowConnected() {
     lcd.print(F("IP Address:"));
     lcd.setCursor(0,1);
     lcd.print(WiFi.localIP());
-    lcdTurnOnBacklight();
+    //lcdTurnOnBacklight();
     delay(1000);
     lcdReset();
 }
@@ -293,14 +325,8 @@ void WIFIConect(bool debugBlink) {
     WIFIshowConnecting();    
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
-        lcdTurnOnBacklight();
-        if (debugBlink) {
-            digitalWrite(ledPin, HIGH);
-        }
+        //lcdTurnOnBacklight();
         delay(250);
-        if (debugBlink) {
-            digitalWrite(ledPin, LOW);
-        }
         delay(250);
         Serial.print(".");
     }   
