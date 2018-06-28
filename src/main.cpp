@@ -12,9 +12,8 @@ const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB C
 const byte tempSensAddr = 0x45; 
 const byte displayAddr = 0x27;
 const byte displayOnButtonPin = D3;
-const unsigned long measurmentDelayMs = 10 * 1000; //10s
-
-//const unsigned long measurmentDelay = 1 * 60 * 1000; //1m
+//const unsigned long measurmentDelayMs = 10 * 1000; //10s
+const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
 const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
 const unsigned long displayBacklightOnDelayS = 5;
 const char aioServer[] = "io.adafruit.com";
@@ -78,23 +77,22 @@ void onDisplayButtonTriggered();
 void setup() {
     Serial.begin(115200);
     Serial.println();
-    uint32_t control;
-    
-    ESP.rtcUserMemoryRead(0, &control, sizeof(uint32_t));
-    Serial.print("setup found, control: ");
-    Serial.print(control);
-    if (control == 0) {
-        coldStart = false;
-        ESP.rtcUserMemoryRead(4, &measurements.reportIn, sizeof(uint32_t));
-        Serial.print(", reportIn: ");
-        Serial.print(measurements.reportIn);
-    }
-    Serial.println();
+    //deep sleep state recovery, not yet used
+    // uint32_t control;
+    // ESP.rtcUserMemoryRead(0, &control, sizeof(uint32_t));
+    // Serial.print("setup found, control: ");
+    // Serial.print(control);
+    // if (control == 0) {
+    //     coldStart = false;
+    //     ESP.rtcUserMemoryRead(4, &measurements.reportIn, sizeof(uint32_t));
+    //     Serial.print(", reportIn: ");
+    //     Serial.print(measurements.reportIn);
+    // }
+    // Serial.println();
    
     pinMode(displayOnButtonPin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(displayOnButtonPin), onDisplayButtonTriggered, FALLING);
     Wire.begin(/*sda*/D2, /*scl*/D1);
-    long deepSleepMax = ESP.deepSleepMax();
     lcd.init();
     if (coldStart) {
         lcdReset();
@@ -102,10 +100,10 @@ void setup() {
         lcd.print(F("Starting..."));
         lcdTurnOnBacklight();
     }
-    Serial.printf_P(PSTR("Starting... deep sleep max: %d"), deepSleepMax);
-    Serial.println();
+    Serial.println(F("Starting..."));
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
+    WiFi.setSleepMode(WIFI_LIGHT_SLEEP); //light sleep is more than default (modem sleep)
 }
 
 
@@ -120,19 +118,6 @@ void loop() {
         Serial.println(F("Unable to measure temperature"));
         Serial.println(measureRes);
     } else {
-        if (!displayingTemp) {
-            lcdReset();
-            displayingTemp = true;
-            lcd.setCursor(0,0);
-            lcd.print(F("Temp: "));
-            lcd.setCursor(0,1);
-            lcd.print(F("Hum: "));
-        }
-        lcd.setCursor(10,0);
-        lcd.printf_P(PSTR("%2.1f \337"), measurements.temperature);
-        lcd.setCursor(10,1);
-        lcd.printf_P(PSTR("%2.1f %%"), measurements.humidity);
-
         if (measurements.reportIn == 0) { //downcounter reached zero, we are publishing to mqtt
             MQTTConect();
             Serial.print(F("Sending measurements, temp: "));
@@ -160,16 +145,31 @@ void loop() {
             //count down
             measurements.reportIn--;
         }
+
+        if (!displayingTemp) {
+            lcdReset();
+            displayingTemp = true;
+            lcd.setCursor(0,0);
+            lcd.print(F("Temp: "));
+            lcd.setCursor(0,1);
+            lcd.print(F("Hum: "));
+        }
+        lcd.setCursor(10,0);
+        lcd.printf_P(PSTR("%2.1f \337"), measurements.temperature);
+        lcd.setCursor(10,1);
+        lcd.printf_P(PSTR("%2.1f %%"), measurements.humidity);
     }
     
-    uint32_t* persistent = (uint32_t*)&measurements;
-//    char* my_s_bytes = reinterpret_cast<char*>(&my_s);
-    //ESP.rtcUserMemoryWrite(0, persistent, sizeof(persistent));
-    uint32_t zero = 0;
-    ESP.rtcUserMemoryWrite(0, &zero, sizeof(uint32_t));
-    ESP.rtcUserMemoryWrite(4, &measurements.reportIn, sizeof(uint32_t));
-    ESP.deepSleep(measurmentDelayMs * 1000, RF_NO_CAL);
-    //delay(measurmentDelayS); 
+    //deep sleep stuff, not used yet
+//     uint32_t* persistent = (uint32_t*)&measurements;
+// //    char* my_s_bytes = reinterpret_cast<char*>(&my_s);
+//     //ESP.rtcUserMemoryWrite(0, persistent, sizeof(persistent));
+//     uint32_t zero = 0;
+//     ESP.rtcUserMemoryWrite(0, &zero, sizeof(uint32_t));
+//     ESP.rtcUserMemoryWrite(4, &measurements.reportIn, sizeof(uint32_t));
+//     ESP.deepSleep(measurmentDelayMs * 1000, RF_NO_CAL);
+    coldStart = false; //coldStart = firstRun
+    delay(measurmentDelayMs); 
 }
 
 byte measureTemp() {
@@ -239,12 +239,18 @@ void MQTTConect() {
         Serial.print(wifiStatus);
         Serial.println();
         WIFIshowConnecting();
-        WiFi.reconnect();
+        if (wifiStatus == WL_DISCONNECTED || wifiStatus == WL_CONNECTION_LOST) {
+            WiFi.reconnect();
+        } else {
+            WiFi.begin(ssid, password);
+        }
+        
         while (WiFi.status() != WL_CONNECTED) {
             delay(250);
             delay(250);
             Serial.print(WiFi.status());
         }
+        Serial.println();
         WIFIShowConnected();
         verifyFingerprint();
     }  
@@ -306,7 +312,10 @@ void WIFIshowConnecting() {
     lcd.print(FPSTR(msgWifiConnecting));
     lcd.setCursor(0,1);
     lcd.print(ssid);
-    //lcdTurnOnBacklight();
+    if (coldStart) {
+        lcdTurnOnBacklight();
+    }
+    
 }
 
 void WIFIShowConnected() {
@@ -316,7 +325,10 @@ void WIFIShowConnected() {
     lcd.print(F("IP Address:"));
     lcd.setCursor(0,1);
     lcd.print(WiFi.localIP());
-    //lcdTurnOnBacklight();
+    if (coldStart) {
+        lcdTurnOnBacklight();
+    }
+    
     delay(1000);
     lcdReset();
 }
@@ -325,7 +337,10 @@ void WIFIConect(bool debugBlink) {
     WIFIshowConnecting();    
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
-        //lcdTurnOnBacklight();
+        if (coldStart) {
+            lcdTurnOnBacklight();
+        }
+        
         delay(250);
         delay(250);
         Serial.print(".");
