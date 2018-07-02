@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "ESP8266WiFi.h"
+
 #include "Wire.h"
 #include "keys.h" //this file is not versioned and should contain only ssid and password 
 #include "Adafruit_MQTT.h"
@@ -102,13 +103,14 @@ void setup() {
     }
     Serial.println(F("Starting..."));
     WiFi.persistent(false);
-    WiFi.mode(WIFI_STA);
-    WiFi.setSleepMode(WIFI_LIGHT_SLEEP); //light sleep is more than default (modem sleep)
+    // WiFi.setSleepMode(WIFI_MODEM_SLEEP); //light sleep is more than default (modem sleep)
+    // WiFi.setSleepMode(WIFI_LIGHT_SLEEP); //light sleep is more than default (modem sleep)
 }
 
 
 
 void loop() {
+    MQTTConect();
     measurements.voltageRaw = analogRead(A0);
     //measurements.voltage = (measurements.voltageRaw / 1024.0f ) * 3.3f; //0-3.3, there's internal voltage divider 100k/220k
     measurements.voltage = (measurements.voltageRaw / 1024.0f ) * 2.81f * 2.266f; //0-6.6v, external voltage divider 220/(680 + internal divider in paralel) 
@@ -119,7 +121,7 @@ void loop() {
         Serial.println(measureRes);
     } else {
         if (measurements.reportIn == 0) { //downcounter reached zero, we are publishing to mqtt
-            MQTTConect();
+            // MQTTConect();
             Serial.print(F("Sending measurements, temp: "));
             Serial.print(measurements.temperature);
             Serial.print(F(", hum: "));
@@ -140,8 +142,8 @@ void loop() {
             } else {
                 Serial.println(F("Failed"));
             }
-            MQTTDisconnect();
-        } else {
+//            MQTTDisconnect();
+      } else {
             //count down
             measurements.reportIn--;
         }
@@ -169,6 +171,7 @@ void loop() {
 //     ESP.rtcUserMemoryWrite(4, &measurements.reportIn, sizeof(uint32_t));
 //     ESP.deepSleep(measurmentDelayMs * 1000, RF_NO_CAL);
     coldStart = false; //coldStart = firstRun
+
     delay(measurmentDelayMs); 
 }
 
@@ -216,8 +219,6 @@ void lcdTurnOffBacklight() {
     lcd.noBacklight();
     displayBacklightOn = false;
     displayBacklightOnSince = 0;
-    displayBacklightTicker.detach();
-
 }
 
 
@@ -228,7 +229,7 @@ void lcdTurnOnBacklight() {
     lcd.backlight();
     displayBacklightOn = true;
     displayBacklightOnSince = millis();
-    displayBacklightTicker.attach(displayBacklightOnDelayS, lcdTurnOffBacklight);
+    displayBacklightTicker.once(displayBacklightOnDelayS, lcdTurnOffBacklight);
 }
 
 void MQTTConect() {
@@ -239,6 +240,8 @@ void MQTTConect() {
         Serial.print(wifiStatus);
         Serial.println();
         WIFIshowConnecting();
+        WiFi.mode(WIFI_STA);
+        //WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
         if (wifiStatus == WL_DISCONNECTED || wifiStatus == WL_CONNECTION_LOST) {
             WiFi.reconnect();
         } else {
@@ -297,6 +300,12 @@ void MQTTDisconnect() {
     if(wifiStatus == WL_CONNECTED) {
         WiFi.disconnect();
     }
+    if (WiFi.getMode() != WIFI_OFF ) {
+        Serial.println("Wifi off...");
+        WiFi.mode(WIFI_OFF); //really turn off -> without this it would actually consume more power than when connected
+        WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
+    }
+    
 }
 
 void lcdReset() {
