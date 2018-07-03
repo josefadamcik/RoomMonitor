@@ -13,6 +13,7 @@ const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB C
 const byte tempSensAddr = 0x45; 
 const byte displayAddr = 0x27;
 const byte displayOnButtonPin = D3;
+const byte controllAnalogIn = D4;
 //const unsigned long measurmentDelayMs = 10 * 1000; //10s
 const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
 const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
@@ -29,6 +30,8 @@ const char tempfeed[] = AIO_USERNAME "/feeds/room-monitor.temperature";
 const char humfeed[] = AIO_USERNAME "/feeds/room-monitor.humidity";
 const char vccfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc";
 const char vccrawfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc-raw";
+const char photorawfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-raw";
+const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-v";
 
 
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
@@ -38,6 +41,8 @@ struct Measurements {
     float humidity = 0.0;
     float voltage = 0.0;
     int voltageRaw = 0;
+    int photoRaw = 0;
+    float photoVoltage = 0.0;
     uint32_t reportIn = 0;
 } measurements;
 
@@ -55,6 +60,8 @@ Adafruit_MQTT_Publish mqttTempFeed = Adafruit_MQTT_Publish(&mqtt,tempfeed, MQTT_
 Adafruit_MQTT_Publish mqttHumFeed = Adafruit_MQTT_Publish(&mqtt,humfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttVccFeed = Adafruit_MQTT_Publish(&mqtt,vccfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttVccRawFeed = Adafruit_MQTT_Publish(&mqtt,vccrawfeed, MQTT_QOS_1);
+Adafruit_MQTT_Publish mqttPhotoRawFeed = Adafruit_MQTT_Publish(&mqtt,photorawfeed, MQTT_QOS_1);
+Adafruit_MQTT_Publish mqttPhotoVFeed = Adafruit_MQTT_Publish(&mqtt,photovfeed, MQTT_QOS_1);
 
 
 Ticker displayBacklightTicker;
@@ -92,6 +99,7 @@ void setup() {
     // Serial.println();
    
     pinMode(displayOnButtonPin, INPUT_PULLUP);
+    pinMode(controllAnalogIn, OUTPUT);
     attachInterrupt(digitalPinToInterrupt(displayOnButtonPin), onDisplayButtonTriggered, FALLING);
     Wire.begin(/*sda*/D2, /*scl*/D1);
     lcd.init();
@@ -108,13 +116,42 @@ void setup() {
 }
 
 
+void printMeasurementsToSerial() {
+    Serial.print(F("temp: "));
+    Serial.print(measurements.temperature);
+    Serial.print(F(", hum: "));
+    Serial.print(measurements.humidity);
+    Serial.print(F(", vcc: "));
+    Serial.print(measurements.voltage);
+    Serial.print(F(", vcc raw: "));
+    Serial.print(measurements.voltageRaw);
+    Serial.print(F(", phototV: "));
+    Serial.print(measurements.photoVoltage);
+    Serial.print(F(", photo raw: "));
+    Serial.print(measurements.photoRaw);
+}
+
+float analogToVoltage(int analog) {
+    //not used (analog / 1024.0f ) * 3.3f; //0-3.3, there's internal voltage divider 100k/220k
+    //0-6.6v, external voltage divider 220/(680 + internal divider in paralel) 
+    return (analog / 1024.0f ) * 2.81f * 2.266f;
+}
 
 void loop() {
     MQTTConect();
+    //measure battery voltage
+    digitalWrite(controllAnalogIn, LOW);
     measurements.voltageRaw = analogRead(A0);
-    //measurements.voltage = (measurements.voltageRaw / 1024.0f ) * 3.3f; //0-3.3, there's internal voltage divider 100k/220k
-    measurements.voltage = (measurements.voltageRaw / 1024.0f ) * 2.81f * 2.266f; //0-6.6v, external voltage divider 220/(680 + internal divider in paralel) 
+    measurements.voltage = analogToVoltage(measurements.voltageRaw);
+    //measure light sensor
+    digitalWrite(controllAnalogIn, HIGH);
+    measurements.photoRaw = analogRead(A0);
+    measurements.photoVoltage = analogToVoltage(measurements.photoRaw);
+    //measure temp
     byte measureRes = measureTemp(); 
+
+    // printMeasurementsToSerial();
+    // Serial.println();
 
     if (measureRes != 0) {
         Serial.println(F("Unable to measure temperature"));
@@ -122,19 +159,17 @@ void loop() {
     } else {
         if (measurements.reportIn == 0) { //downcounter reached zero, we are publishing to mqtt
             // MQTTConect();
-            Serial.print(F("Sending measurements, temp: "));
-            Serial.print(measurements.temperature);
-            Serial.print(F(", hum: "));
-            Serial.print(measurements.humidity);
-            Serial.print(F(", vcc: "));
-            Serial.print(measurements.voltage);
-            Serial.print(F(", vcc raw: "));
-            Serial.print(measurements.voltageRaw);
+            Serial.print(F("Sending measurements: "));
+            printMeasurementsToSerial();
             Serial.print(F("... "));
+            //debug - dont send vaues
+            // bool succ = true;
             bool succ = mqttTempFeed.publish(measurements.temperature);
             succ = mqttHumFeed.publish(measurements.humidity) && succ;
             succ = mqttVccFeed.publish(measurements.voltage) && succ;
             succ = mqttVccRawFeed.publish(measurements.voltageRaw) && succ;
+            succ = mqttPhotoRawFeed.publish(measurements.photoRaw) && succ;
+            succ = mqttPhotoVFeed.publish(measurements.photoVoltage) && succ;
             //success, we will reset counter, failur wont'
             if (succ) {
                 measurements.reportIn = publishEveryNMeasurements - 1;
@@ -155,11 +190,21 @@ void loop() {
             lcd.print(F("Temp: "));
             lcd.setCursor(0,1);
             lcd.print(F("Hum: "));
+
+            // lcd.setCursor(0,0);
+            // lcd.print(F("VCC-Raw: "));
+            // lcd.setCursor(0,1);
+            // lcd.print(F("VCC: "));
         }
         lcd.setCursor(10,0);
         lcd.printf_P(PSTR("%2.1f \337"), measurements.temperature);
         lcd.setCursor(10,1);
         lcd.printf_P(PSTR("%2.1f %%"), measurements.humidity);
+
+        // lcd.setCursor(10,0);
+        // lcd.printf_P(PSTR("%4d"), measurements.photoRaw);
+        // lcd.setCursor(10,1);
+        // lcd.printf_P(PSTR("%1.2f"), measurements.photoVoltage);
     }
     
     //deep sleep stuff, not used yet
