@@ -1,10 +1,10 @@
 #include <Arduino.h>
-#include "ESP8266WiFi.h"
+#include <ESP8266WiFi.h>
 
-#include "Wire.h"
+#include <Wire.h>
 #include "keys.h" //this file is not versioned and should contain only ssid and password 
-#include "Adafruit_MQTT.h"
-#include "Adafruit_MQTT_Client.h"
+#include <Adafruit_MQTT.h>
+#include <Adafruit_MQTT_Client.h>
 #include <LiquidCrystal_I2C.h>
 #include <Ticker.h>
 
@@ -32,7 +32,7 @@ const char vccfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc";
 const char vccrawfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc-raw";
 const char photorawfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-raw";
 const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-v";
-
+const char photorfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-r";
 
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 
@@ -43,6 +43,7 @@ struct Measurements {
     int voltageRaw = 0;
     int photoRaw = 0;
     float photoVoltage = 0.0;
+    float photoValue = 0.0;
     uint32_t reportIn = 0;
 } measurements;
 
@@ -62,6 +63,7 @@ Adafruit_MQTT_Publish mqttVccFeed = Adafruit_MQTT_Publish(&mqtt,vccfeed, MQTT_QO
 Adafruit_MQTT_Publish mqttVccRawFeed = Adafruit_MQTT_Publish(&mqtt,vccrawfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttPhotoRawFeed = Adafruit_MQTT_Publish(&mqtt,photorawfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttPhotoVFeed = Adafruit_MQTT_Publish(&mqtt,photovfeed, MQTT_QOS_1);
+Adafruit_MQTT_Publish mqttPhotoRFeed = Adafruit_MQTT_Publish(&mqtt,photorfeed, MQTT_QOS_1);
 
 
 Ticker displayBacklightTicker;
@@ -125,7 +127,9 @@ void printMeasurementsToSerial() {
     Serial.print(measurements.voltage);
     Serial.print(F(", vcc raw: "));
     Serial.print(measurements.voltageRaw);
-    Serial.print(F(", phototV: "));
+    Serial.print(F(", photot value: "));
+    Serial.print(measurements.photoValue);
+    Serial.print(F(", photot voltage: "));
     Serial.print(measurements.photoVoltage);
     Serial.print(F(", photo raw: "));
     Serial.print(measurements.photoRaw);
@@ -139,6 +143,7 @@ float analogToVoltage(int analog) {
 
 void loop() {
     MQTTConect();
+    delay(500); //Let things settle a bit (mainly the power source voltage)
     //measure battery voltage
     digitalWrite(controllAnalogIn, LOW);
     measurements.voltageRaw = analogRead(A0);
@@ -147,6 +152,8 @@ void loop() {
     digitalWrite(controllAnalogIn, HIGH);
     measurements.photoRaw = analogRead(A0);
     measurements.photoVoltage = analogToVoltage(measurements.photoRaw);
+    //following should be the resistance of the photoresistor
+    measurements.photoValue = (measurements.voltage - measurements.photoVoltage) * 10.0 / measurements.photoVoltage; /*  * 10komh */ 
     //measure temp
     byte measureRes = measureTemp(); 
 
@@ -170,6 +177,7 @@ void loop() {
             succ = mqttVccRawFeed.publish(measurements.voltageRaw) && succ;
             succ = mqttPhotoRawFeed.publish(measurements.photoRaw) && succ;
             succ = mqttPhotoVFeed.publish(measurements.photoVoltage) && succ;
+            succ = mqttPhotoRFeed.publish(measurements.photoValue) && succ;
             //success, we will reset counter, failur wont'
             if (succ) {
                 measurements.reportIn = publishEveryNMeasurements - 1;
