@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-
 #include <Wire.h>
 #include "keys.h" //this file is not versioned and should contain only ssid and password 
 #include <Adafruit_MQTT.h>
@@ -9,14 +8,17 @@
 #include <Ticker.h>
 
 const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18";
+const unsigned char powerLowerThanWarningThresholds[] = {490, 480, 470}; //round(vcc * 10)
+// const int powerLowerThanWarningThresholds[] = {520, 510, 500}; //round(vcc * 10)
 
 const byte tempSensAddr = 0x45; 
 const byte displayAddr = 0x27;
 const byte displayOnButtonPin = D3;
 const byte controllAnalogIn = D4;
-//const unsigned long measurmentDelayMs = 10 * 1000; //10s
-const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
-const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
+const unsigned long measurmentDelayMs = 10 * 1000; //10s
+// const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
+// const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
+const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
 const unsigned long displayBacklightOnDelayS = 5;
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
@@ -30,6 +32,7 @@ const char tempfeed[] = AIO_USERNAME "/feeds/room-monitor.temperature";
 const char humfeed[] = AIO_USERNAME "/feeds/room-monitor.humidity";
 const char vccfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc";
 const char vccrawfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc-raw";
+const char vccwarning[] = AIO_USERNAME "/feeds/room-monitor.vcc-warning";
 const char photorawfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-raw";
 const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-v";
 const char photorfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-r";
@@ -40,11 +43,14 @@ struct Measurements {
     float temperature = 0.0;
     float humidity = 0.0;
     float voltage = 0.0;
+    float voltageSum = 0.0;
+    unsigned char voltageCount = 0;
     int voltageRaw = 0;
     int photoRaw = 0;
     float photoVoltage = 0.0;
     float photoValue = 0.0;
-    uint32_t reportIn = 0;
+    int lastPowerWarningThreshold = 0;
+    unsigned char reportIn = 0;
 } measurements;
 
 struct PersistentState {
@@ -61,6 +67,7 @@ Adafruit_MQTT_Publish mqttTempFeed = Adafruit_MQTT_Publish(&mqtt,tempfeed, MQTT_
 Adafruit_MQTT_Publish mqttHumFeed = Adafruit_MQTT_Publish(&mqtt,humfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttVccFeed = Adafruit_MQTT_Publish(&mqtt,vccfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttVccRawFeed = Adafruit_MQTT_Publish(&mqtt,vccrawfeed, MQTT_QOS_1);
+Adafruit_MQTT_Publish mqttVccWarning = Adafruit_MQTT_Publish(&mqtt,vccwarning, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttPhotoRawFeed = Adafruit_MQTT_Publish(&mqtt,photorawfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttPhotoVFeed = Adafruit_MQTT_Publish(&mqtt,photovfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttPhotoRFeed = Adafruit_MQTT_Publish(&mqtt,photorfeed, MQTT_QOS_1);
@@ -125,40 +132,46 @@ void printMeasurementsToSerial() {
     Serial.print(measurements.humidity);
     Serial.print(F(", vcc: "));
     Serial.print(measurements.voltage);
+    Serial.print(F(", avg vcc: "));
+    Serial.print(measurements.voltageSum / measurements.voltageCount);
     Serial.print(F(", vcc raw: "));
     Serial.print(measurements.voltageRaw);
-    Serial.print(F(", photot value: "));
+    Serial.print(F(", phot R: "));
     Serial.print(measurements.photoValue);
-    Serial.print(F(", photot voltage: "));
+    Serial.print(F(", phot vol: "));
     Serial.print(measurements.photoVoltage);
-    Serial.print(F(", photo raw: "));
+    Serial.print(F(", phot raw: "));
     Serial.print(measurements.photoRaw);
 }
 
 float analogToVoltage(int analog) {
     //not used (analog / 1024.0f ) * 3.3f; //0-3.3, there's internal voltage divider 100k/220k
     //0-6.6v, external voltage divider 220/(680 + internal divider in paralel) 
-    return (analog / 1024.0f ) * 2.81f * 2.266f;
+    //return (analog / 1024.0f ) * 2.81f * 2.266f;
+    return analog * 0.00611; //calibrated from measurements and less errors from floating point arithmetics
 }
 
 void loop() {
     MQTTConect();
-    delay(500); //Let things settle a bit (mainly the power source voltage)
+    delay(100); //Let things settle a bit (mainly the power source voltage)
     //measure battery voltage
     digitalWrite(controllAnalogIn, LOW);
     measurements.voltageRaw = analogRead(A0);
     measurements.voltage = analogToVoltage(measurements.voltageRaw);
+    measurements.voltageSum += measurements.voltage;
+    measurements.voltageCount++;
     //measure light sensor
     digitalWrite(controllAnalogIn, HIGH);
     measurements.photoRaw = analogRead(A0);
     measurements.photoVoltage = analogToVoltage(measurements.photoRaw);
     //following should be the resistance of the photoresistor
     measurements.photoValue = (measurements.voltage - measurements.photoVoltage) * 10.0 / measurements.photoVoltage; /*  * 10komh */ 
+    digitalWrite(controllAnalogIn, LOW);
     //measure temp
     byte measureRes = measureTemp(); 
 
-    // printMeasurementsToSerial();
-    // Serial.println();
+    printMeasurementsToSerial();
+    Serial.println();
 
     if (measureRes != 0) {
         Serial.println(F("Unable to measure temperature"));
@@ -173,17 +186,37 @@ void loop() {
             // bool succ = true;
             bool succ = mqttTempFeed.publish(measurements.temperature);
             succ = mqttHumFeed.publish(measurements.humidity) && succ;
-            succ = mqttVccFeed.publish(measurements.voltage) && succ;
+            float reportedVoltage = measurements.voltageSum / measurements.voltageCount;
+            succ = mqttVccFeed.publish(reportedVoltage) && succ;
+            measurements.voltageSum = 0.0;
+            measurements.voltageCount = 0;
             succ = mqttVccRawFeed.publish(measurements.voltageRaw) && succ;
             succ = mqttPhotoRawFeed.publish(measurements.photoRaw) && succ;
             succ = mqttPhotoVFeed.publish(measurements.photoVoltage) && succ;
             succ = mqttPhotoRFeed.publish(measurements.photoValue) && succ;
+            //Should we send power warning? We are sending value only when it goes under some threshold 
+            //for the first time.
+            //detect actual threshold
+            int thresholdValue = roundf(reportedVoltage * 100.0f);
+            int currentThreshold = 0;
+            for (unsigned char i = 0; i < 3; i++) {
+                if (thresholdValue <= powerLowerThanWarningThresholds[i]) {
+                    currentThreshold = powerLowerThanWarningThresholds[i];
+                }
+            }
+            if (!coldStart && currentThreshold > 0 && currentThreshold != measurements.lastPowerWarningThreshold) {
+                Serial.print(F("Reporting threshold: "));
+                Serial.print(currentThreshold);
+                mqttVccWarning.publish(currentThreshold);
+            }
+            measurements.lastPowerWarningThreshold = currentThreshold;
+
             //success, we will reset counter, failur wont'
             if (succ) {
                 measurements.reportIn = publishEveryNMeasurements - 1;
-                Serial.println(F("OK!"));
+                Serial.println(F(" OK!"));
             } else {
-                Serial.println(F("Failed"));
+                Serial.println(F(" Failed"));
             }
 //            MQTTDisconnect();
       } else {
