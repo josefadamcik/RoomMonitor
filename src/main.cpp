@@ -4,6 +4,9 @@
 #include "keys.h" //this file is not versioned and should contain only ssid and password 
 #include <Adafruit_MQTT.h>
 #include <Adafruit_MQTT_Client.h>
+#include <Adafruit_Sensor.h>
+#include <SPI.h>
+#include <Adafruit_BMP280.h>
 #include <LiquidCrystal_I2C.h>
 #include <Ticker.h>
 
@@ -36,6 +39,8 @@ const char vccwarning[] = AIO_USERNAME "/feeds/room-monitor.vcc-warning";
 const char photorawfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-raw";
 const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-v";
 const char photorfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-r";
+const char pressurefeed[] = AIO_USERNAME "/feeds/room-monitor.pressure";
+
 
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 
@@ -51,6 +56,8 @@ struct Measurements {
     float photoValue = 0.0;
     int lastPowerWarningThreshold = 0;
     unsigned char reportIn = 0;
+    float pressure = 0.0;
+    float bmpTemp = 0.0;
 } measurements;
 
 struct PersistentState {
@@ -59,6 +66,7 @@ struct PersistentState {
 bool displayingTemp = false;
 
 LiquidCrystal_I2C lcd(displayAddr, 16, 2);
+Adafruit_BMP280 bmp; 
 
 WiFiClientSecure client;
 //WiFiClient client;
@@ -71,6 +79,7 @@ Adafruit_MQTT_Publish mqttVccWarning = Adafruit_MQTT_Publish(&mqtt,vccwarning, M
 Adafruit_MQTT_Publish mqttPhotoRawFeed = Adafruit_MQTT_Publish(&mqtt,photorawfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttPhotoVFeed = Adafruit_MQTT_Publish(&mqtt,photovfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttPhotoRFeed = Adafruit_MQTT_Publish(&mqtt,photorfeed, MQTT_QOS_1);
+Adafruit_MQTT_Publish mqttPressureFeed = Adafruit_MQTT_Publish(&mqtt,pressurefeed, MQTT_QOS_1);
 
 
 Ticker displayBacklightTicker;
@@ -111,6 +120,11 @@ void setup() {
     pinMode(controllAnalogIn, OUTPUT);
     attachInterrupt(digitalPinToInterrupt(displayOnButtonPin), onDisplayButtonTriggered, FALLING);
     Wire.begin(/*sda*/D2, /*scl*/D1);
+    bool bmpStatus = bmp.begin(0x76);
+    if (!bmpStatus) {
+        Serial.println("Unable to initialize bmp280");
+        while(1);
+    }
     lcd.init();
     if (coldStart) {
         lcdReset();
@@ -128,8 +142,13 @@ void setup() {
 void printMeasurementsToSerial() {
     Serial.print(F("temp: "));
     Serial.print(measurements.temperature);
+    Serial.print(F(" ("));
+    Serial.print(measurements.bmpTemp);
+    Serial.print(F(") "));
     Serial.print(F(", hum: "));
     Serial.print(measurements.humidity);
+    Serial.print(F(", press: "));
+    Serial.print(measurements.pressure);
     Serial.print(F(", vcc: "));
     Serial.print(measurements.voltage);
     Serial.print(F(", avg vcc: "));
@@ -167,8 +186,20 @@ void loop() {
     //following should be the resistance of the photoresistor
     measurements.photoValue = (measurements.voltage - measurements.photoVoltage) * 10.0 / measurements.photoVoltage; /*  * 10komh */ 
     digitalWrite(controllAnalogIn, LOW);
-    //measure temp
+    //SHT-30 measure temp and humidity
     byte measureRes = measureTemp(); 
+    //measur pressure
+    measurements.bmpTemp = bmp.readTemperature();
+    measurements.pressure = bmp.readPressure();
+
+    // Serial.print("BMP temp: ");
+    // Serial.print(bmp.readTemperature());
+    // Serial.print(", press: ");
+    // Serial.print(bmp.readPressure() / 100.0f);
+    // Serial.print(" hPa, alitude: ");
+    // Serial.print(bmp.readAltitude());
+    // Serial.println();
+
 
     printMeasurementsToSerial();
     Serial.println();
@@ -194,6 +225,7 @@ void loop() {
             succ = mqttPhotoRawFeed.publish(measurements.photoRaw) && succ;
             succ = mqttPhotoVFeed.publish(measurements.photoVoltage) && succ;
             succ = mqttPhotoRFeed.publish(measurements.photoValue) && succ;
+            succ = mqttPressureFeed.publish(measurements.pressure) && succ;
             //Should we send power warning? We are sending value only when it goes under some threshold 
             //for the first time.
             //detect actual threshold
