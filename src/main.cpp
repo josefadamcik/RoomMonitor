@@ -16,6 +16,7 @@ extern "C" {
 // #include "os_type.h"
 // #include "osapi.h"
 // #include "mem.h"
+#include "gpio.h"
 #include "user_interface.h"
 
 // #include "lwip/opt.h"
@@ -117,6 +118,8 @@ void onDisplayButtonTriggered();
 void setup() {
     Serial.begin(115200);
     Serial.println();
+    gpio_init();
+    wifi_fpm_set_sleep_type(LIGHT_SLEEP_T);
     pinMode(displayOnButtonPin, INPUT_PULLUP);
     pinMode(controllAnalogIn, OUTPUT);
     attachInterrupt(digitalPinToInterrupt(displayOnButtonPin), onDisplayButtonTriggered, FALLING);
@@ -286,24 +289,29 @@ void loop() {
     coldStart = false; //coldStart = firstRun
 
     //start sleep
-    Serial.println(F("Try to initalize sleep..."));
+    Serial.println(F("Try to initalize sleep..."));\
+    Serial.flush();
     wifi_station_disconnect();
     wifi_set_opmode_current(NULL_MODE);
     wifi_set_opmode(NULL_MODE);
-    wifi_fpm_set_sleep_type(LIGHT_SLEEP_T);
     wifi_fpm_open();
+    gpio_pin_wakeup_enable(GPIO_ID_PIN(displayOnButtonPin), GPIO_PIN_INTR_LOLEVEL);
+    // wifi_enable_gpio_wakeup(GPIO_ID_PIN(displayOnButtonPin), GPIO_PIN_INTR_LOLEVEL);
     wifi_fpm_set_wakeup_cb(on_wakeup);
-    wifi_enable_gpio_wakeup(displayOnButtonPin, GPIO_PIN_INTR_LOLEVEL);
 
     signed char result = wifi_fpm_do_sleep(10000000l);
+    // signed char result = wifi_fpm_do_sleep(0xFFFFFFF);
     if (result != 0) {
         Serial.print(F("Sleep failed..."));
         Serial.println(result);
         delay(measurmentDelayMs); 
     } else {
-        Serial.print(F("Sleep ok"));
-        Serial.println(result);
-        Serial.println(millis());
+        delay(10000+1);
+        // Serial.print(F("Sleep ok"));
+        // Serial.println(result);
+        // Serial.println(millis());
+        // delay(200);
+        Serial.println(F("After delay"));
     }
    
 }
