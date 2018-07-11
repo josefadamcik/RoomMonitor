@@ -11,17 +11,20 @@
 #include <Ticker.h>
 
 const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18";
-const unsigned char powerLowerThanWarningThresholds[] = {490, 480, 470}; //round(vcc * 10)
+const int powerLowerThanWarningThresholds[] = {490, 480, 470}; //round(vcc * 10)
+const byte powerLowerThanWarningThresholdCount = 3;
 // const int powerLowerThanWarningThresholds[] = {520, 510, 500}; //round(vcc * 10)
 
 const byte tempSensAddr = 0x45; 
 const byte displayAddr = 0x27;
 const byte displayOnButtonPin = D3;
 const byte controllAnalogIn = D4;
+//1min
 const unsigned long measurmentDelayMs = 10 * 1000; //10s
+const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
+//5min
 // const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
 // const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
-const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
 const unsigned long displayBacklightOnDelayS = 5;
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
@@ -60,9 +63,6 @@ struct Measurements {
     float bmpTemp = 0.0;
 } measurements;
 
-struct PersistentState {
-
-} state;
 bool displayingTemp = false;
 
 LiquidCrystal_I2C lcd(displayAddr, 16, 2);
@@ -192,15 +192,6 @@ void loop() {
     measurements.bmpTemp = bmp.readTemperature();
     measurements.pressure = bmp.readPressure();
 
-    // Serial.print("BMP temp: ");
-    // Serial.print(bmp.readTemperature());
-    // Serial.print(", press: ");
-    // Serial.print(bmp.readPressure() / 100.0f);
-    // Serial.print(" hPa, alitude: ");
-    // Serial.print(bmp.readAltitude());
-    // Serial.println();
-
-
     printMeasurementsToSerial();
     Serial.println();
 
@@ -217,7 +208,7 @@ void loop() {
             // bool succ = true;
             bool succ = mqttTempFeed.publish(measurements.temperature);
             succ = mqttHumFeed.publish(measurements.humidity) && succ;
-            float reportedVoltage = measurements.voltageSum / measurements.voltageCount;
+            const float reportedVoltage = measurements.voltageSum / measurements.voltageCount;
             succ = mqttVccFeed.publish(reportedVoltage) && succ;
             measurements.voltageSum = 0.0;
             measurements.voltageCount = 0;
@@ -229,19 +220,24 @@ void loop() {
             //Should we send power warning? We are sending value only when it goes under some threshold 
             //for the first time.
             //detect actual threshold
-            int thresholdValue = roundf(reportedVoltage * 100.0f);
+            const int thresholdValue = roundf(reportedVoltage * 100.0f);
+            Serial.print(F("Computed threshold: "));
+            Serial.print(thresholdValue);
+            Serial.print(F(" last: "));
+            Serial.println(measurements.lastPowerWarningThreshold);
             int currentThreshold = 0;
-            for (unsigned char i = 0; i < 3; i++) {
+            for (unsigned char i = 0; i < powerLowerThanWarningThresholdCount; i++) {
                 if (thresholdValue <= powerLowerThanWarningThresholds[i]) {
                     currentThreshold = powerLowerThanWarningThresholds[i];
                 }
             }
+
             if (!coldStart && currentThreshold > 0 && currentThreshold != measurements.lastPowerWarningThreshold) {
                 Serial.print(F("Reporting threshold: "));
                 Serial.print(currentThreshold);
                 mqttVccWarning.publish(currentThreshold);
+                measurements.lastPowerWarningThreshold = currentThreshold;
             }
-            measurements.lastPowerWarningThreshold = currentThreshold;
 
             //success, we will reset counter, failur wont'
             if (succ) {
@@ -280,14 +276,6 @@ void loop() {
         // lcd.printf_P(PSTR("%1.2f"), measurements.photoVoltage);
     }
     
-    //deep sleep stuff, not used yet
-//     uint32_t* persistent = (uint32_t*)&measurements;
-// //    char* my_s_bytes = reinterpret_cast<char*>(&my_s);
-//     //ESP.rtcUserMemoryWrite(0, persistent, sizeof(persistent));
-//     uint32_t zero = 0;
-//     ESP.rtcUserMemoryWrite(0, &zero, sizeof(uint32_t));
-//     ESP.rtcUserMemoryWrite(4, &measurements.reportIn, sizeof(uint32_t));
-//     ESP.deepSleep(measurmentDelayMs * 1000, RF_NO_CAL);
     coldStart = false; //coldStart = firstRun
 
     delay(measurmentDelayMs); 
