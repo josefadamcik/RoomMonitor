@@ -18,7 +18,7 @@ const byte powerLowerThanWarningThresholdCount = 3;
 const byte tempSensAddr = 0x45; 
 const byte displayAddr = 0x27;
 const byte displayOnButtonPin = D3;
-const byte controllAnalogIn = D4;
+const byte controllAnalogIn = D5; //not: D4=GPIO2=BLUELED
 //1min
 const unsigned long measurmentDelayMs = 10 * 1000; //10s
 const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
