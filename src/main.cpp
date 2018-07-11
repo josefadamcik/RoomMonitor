@@ -10,6 +10,20 @@
 #include <LiquidCrystal_I2C.h>
 #include <Ticker.h>
 
+extern "C" {
+// #include "c_types.h"
+// #include "ets_sys.h"
+// #include "os_type.h"
+// #include "osapi.h"
+// #include "mem.h"
+#include "user_interface.h"
+
+// #include "lwip/opt.h"
+// #include "lwip/err.h"
+// #include "lwip/dns.h"
+// #include "lwip/init.h" // LWIP_VERSION_
+}
+
 const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18";
 const int powerLowerThanWarningThresholds[] = {490, 480, 470}; //round(vcc * 10)
 const byte powerLowerThanWarningThresholdCount = 3;
@@ -103,19 +117,6 @@ void onDisplayButtonTriggered();
 void setup() {
     Serial.begin(115200);
     Serial.println();
-    //deep sleep state recovery, not yet used
-    // uint32_t control;
-    // ESP.rtcUserMemoryRead(0, &control, sizeof(uint32_t));
-    // Serial.print("setup found, control: ");
-    // Serial.print(control);
-    // if (control == 0) {
-    //     coldStart = false;
-    //     ESP.rtcUserMemoryRead(4, &measurements.reportIn, sizeof(uint32_t));
-    //     Serial.print(", reportIn: ");
-    //     Serial.print(measurements.reportIn);
-    // }
-    // Serial.println();
-   
     pinMode(displayOnButtonPin, INPUT_PULLUP);
     pinMode(controllAnalogIn, OUTPUT);
     attachInterrupt(digitalPinToInterrupt(displayOnButtonPin), onDisplayButtonTriggered, FALLING);
@@ -134,8 +135,6 @@ void setup() {
     }
     Serial.println(F("Starting..."));
     WiFi.persistent(false);
-    // WiFi.setSleepMode(WIFI_MODEM_SLEEP); //light sleep is more than default (modem sleep)
-    // WiFi.setSleepMode(WIFI_LIGHT_SLEEP); //light sleep is more than default (modem sleep)
 }
 
 
@@ -163,16 +162,24 @@ void printMeasurementsToSerial() {
     Serial.print(measurements.photoRaw);
 }
 
-float analogToVoltage(int analog) {
+float analogToVoltage(const int analog) {
     //not used (analog / 1024.0f ) * 3.3f; //0-3.3, there's internal voltage divider 100k/220k
     //0-6.6v, external voltage divider 220/(680 + internal divider in paralel) 
     //return (analog / 1024.0f ) * 2.81f * 2.266f;
     return analog * 0.00611; //calibrated from measurements and less errors from floating point arithmetics
 }
 
+void on_wakeup() {
+    Serial.println(F("Woke up..."));
+    Serial.println(millis());
+    wifi_fpm_close();
+    wifi_set_opmode(STATION_MODE);
+
+}
+
 void loop() {
-    MQTTConect();
-    delay(100); //Let things settle a bit (mainly the power source voltage)
+    // MQTTConect();
+    // delay(100); //Let things settle a bit (mainly the power source voltage)
     //measure battery voltage
     digitalWrite(controllAnalogIn, LOW);
     measurements.voltageRaw = analogRead(A0);
@@ -200,7 +207,7 @@ void loop() {
         Serial.println(measureRes);
     } else {
         if (measurements.reportIn == 0) { //downcounter reached zero, we are publishing to mqtt
-            // MQTTConect();
+            MQTTConect();
             Serial.print(F("Sending measurements: "));
             printMeasurementsToSerial();
             Serial.print(F("... "));
@@ -246,7 +253,7 @@ void loop() {
             } else {
                 Serial.println(F(" Failed"));
             }
-//            MQTTDisconnect();
+           MQTTDisconnect();
       } else {
             //count down
             measurements.reportIn--;
@@ -278,7 +285,27 @@ void loop() {
     
     coldStart = false; //coldStart = firstRun
 
-    delay(measurmentDelayMs); 
+    //start sleep
+    Serial.println(F("Try to initalize sleep..."));
+    wifi_station_disconnect();
+    wifi_set_opmode_current(NULL_MODE);
+    wifi_set_opmode(NULL_MODE);
+    wifi_fpm_set_sleep_type(LIGHT_SLEEP_T);
+    wifi_fpm_open();
+    wifi_fpm_set_wakeup_cb(on_wakeup);
+    wifi_enable_gpio_wakeup(displayOnButtonPin, GPIO_PIN_INTR_LOLEVEL);
+
+    signed char result = wifi_fpm_do_sleep(10000000l);
+    if (result != 0) {
+        Serial.print(F("Sleep failed..."));
+        Serial.println(result);
+        delay(measurmentDelayMs); 
+    } else {
+        Serial.print(F("Sleep ok"));
+        Serial.println(result);
+        Serial.println(millis());
+    }
+   
 }
 
 byte measureTemp() {
@@ -340,14 +367,16 @@ void lcdTurnOnBacklight() {
 
 void MQTTConect() {
     int wifiStatus = WiFi.status();
+    if (wifi_get_opmode)
     if(wifiStatus != WL_CONNECTED){
         Serial.println();
         Serial.print(F("WiFi not connected, status: "));
         Serial.print(wifiStatus);
         Serial.println();
         WIFIshowConnecting();
+        wifi_fpm_close();
+        wifi_set_opmode(STATION_MODE);
         WiFi.mode(WIFI_STA);
-        //WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
         if (wifiStatus == WL_DISCONNECTED || wifiStatus == WL_CONNECTION_LOST) {
             WiFi.reconnect();
         } else {
@@ -409,7 +438,6 @@ void MQTTDisconnect() {
     if (WiFi.getMode() != WIFI_OFF ) {
         Serial.println("Wifi off...");
         WiFi.mode(WIFI_OFF); //really turn off -> without this it would actually consume more power than when connected
-        WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
     }
     
 }
@@ -448,15 +476,13 @@ void WIFIShowConnected() {
     lcdReset();
 }
 
-void WIFIConect(bool debugBlink) {
+void WIFIConect() {
     WIFIshowConnecting();    
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
         if (coldStart) {
             lcdTurnOnBacklight();
         }
-        
-        delay(250);
         delay(250);
         Serial.print(".");
     }   
