@@ -7,7 +7,6 @@
 #include <Adafruit_Sensor.h>
 #include <SPI.h>
 #include <Adafruit_BMP280.h>
-#include <LiquidCrystal_I2C.h>
 #include <Ticker.h>
 
 const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18";
@@ -16,16 +15,13 @@ const byte powerLowerThanWarningThresholdCount = 3;
 // const int powerLowerThanWarningThresholds[] = {520, 510, 500}; //round(vcc * 10)
 
 const byte tempSensAddr = 0x45; 
-const byte displayAddr = 0x27;
-const byte displayOnButtonPin = D3;
 const byte controllAnalogIn = D5; //not: D4=GPIO2=BLUELED
 //1min
-const unsigned long measurmentDelayMs = 10 * 1000; //10s
-const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
+// const unsigned long measurmentDelayMs = 10 * 1000; //10s
+// const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
 //5min
-// const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
-// const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
-const unsigned long displayBacklightOnDelayS = 5;
+const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
+const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
 const int aioServerport = 8883; //ssl 8883, no ssl 1883;
@@ -65,7 +61,6 @@ struct Measurements {
 
 bool displayingTemp = false;
 
-LiquidCrystal_I2C lcd(displayAddr, 16, 2);
 Adafruit_BMP280 bmp; 
 
 WiFiClientSecure client;
@@ -116,21 +111,11 @@ void setup() {
     // }
     // Serial.println();
    
-    pinMode(displayOnButtonPin, INPUT_PULLUP);
-    pinMode(controllAnalogIn, OUTPUT);
-    attachInterrupt(digitalPinToInterrupt(displayOnButtonPin), onDisplayButtonTriggered, FALLING);
     Wire.begin(/*sda*/D2, /*scl*/D1);
     bool bmpStatus = bmp.begin(0x76);
     if (!bmpStatus) {
         Serial.println("Unable to initialize bmp280");
         while(1);
-    }
-    lcd.init();
-    if (coldStart) {
-        lcdReset();
-        lcd.home();
-        lcd.print(F("Starting..."));
-        lcdTurnOnBacklight();
     }
     Serial.println(F("Starting..."));
     WiFi.persistent(false);
@@ -251,29 +236,6 @@ void loop() {
             //count down
             measurements.reportIn--;
         }
-
-        if (!displayingTemp) {
-            lcdReset();
-            displayingTemp = true;
-            lcd.setCursor(0,0);
-            lcd.print(F("Temp: "));
-            lcd.setCursor(0,1);
-            lcd.print(F("Hum: "));
-
-            // lcd.setCursor(0,0);
-            // lcd.print(F("VCC-Raw: "));
-            // lcd.setCursor(0,1);
-            // lcd.print(F("VCC: "));
-        }
-        lcd.setCursor(10,0);
-        lcd.printf_P(PSTR("%2.1f \337"), measurements.temperature);
-        lcd.setCursor(10,1);
-        lcd.printf_P(PSTR("%2.1f %%"), measurements.humidity);
-
-        // lcd.setCursor(10,0);
-        // lcd.printf_P(PSTR("%4d"), measurements.photoRaw);
-        // lcd.setCursor(10,1);
-        // lcd.printf_P(PSTR("%1.2f"), measurements.photoVoltage);
     }
     
     coldStart = false; //coldStart = firstRun
@@ -317,26 +279,6 @@ void onDisplayButtonTriggered() {
     }
 }
 
-
-void lcdTurnOffBacklight() {
-    if (!displayBacklightOn) {
-        return;
-    }
-    lcd.noBacklight();
-    displayBacklightOn = false;
-    displayBacklightOnSince = 0;
-}
-
-
-void lcdTurnOnBacklight() {
-    if (displayBacklightOn) {
-        return;
-    }
-    lcd.backlight();
-    displayBacklightOn = true;
-    displayBacklightOnSince = millis();
-    displayBacklightTicker.once(displayBacklightOnDelayS, lcdTurnOffBacklight);
-}
 
 void MQTTConect() {
     int wifiStatus = WiFi.status();
@@ -414,38 +356,15 @@ void MQTTDisconnect() {
     
 }
 
-void lcdReset() {
-    lcd.clear();
-    lcd.home();
-    displayingTemp = false;
-}
 
 void WIFIshowConnecting() {
     Serial.print(FPSTR(msgWifiConnecting));
     Serial.println(ssid);
-    lcdReset();
-    lcd.print(FPSTR(msgWifiConnecting));
-    lcd.setCursor(0,1);
-    lcd.print(ssid);
-    if (coldStart) {
-        lcdTurnOnBacklight();
-    }
-    
 }
 
 void WIFIShowConnected() {
     Serial.print(F("Your ESP is connected! Your IP address is: "));  
     Serial.println(WiFi.localIP());      
-    lcdReset();
-    lcd.print(F("IP Address:"));
-    lcd.setCursor(0,1);
-    lcd.print(WiFi.localIP());
-    if (coldStart) {
-        lcdTurnOnBacklight();
-    }
-    
-    delay(1000);
-    lcdReset();
 }
 
 void WIFIConect(bool debugBlink) {
