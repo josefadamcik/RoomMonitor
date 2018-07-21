@@ -1,13 +1,17 @@
+#include "keys.h" //this file is not versioned and should contain only ssid and password 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <Wire.h>
-#include "keys.h" //this file is not versioned and should contain only ssid and password 
 #include <Adafruit_MQTT.h>
 #include <Adafruit_MQTT_Client.h>
 #include <Adafruit_Sensor.h>
 #include <SPI.h>
 #include <Adafruit_BMP280.h>
 #include <Ticker.h>
+#include <BH1750.h>
+
+#define DEBUG true
+#define Serial if(DEBUG)Serial
 
 const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18";
 const int powerLowerThanWarningThresholds[] = {490, 480, 470}; //round(vcc * 10)
@@ -15,13 +19,13 @@ const byte powerLowerThanWarningThresholdCount = 3;
 // const int powerLowerThanWarningThresholds[] = {520, 510, 500}; //round(vcc * 10)
 
 const byte tempSensAddr = 0x45; 
-const byte controllAnalogIn = D5; //not: D4=GPIO2=BLUELED
+const byte ligthSensAddr = 0x23;
 //1min
-// const unsigned long measurmentDelayMs = 10 * 1000; //10s
-// const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
+const unsigned long measurmentDelayMs = 10 * 1000; //10s
+const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
 //5min
-const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
-const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
+// const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
+// const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
 const int aioServerport = 8883; //ssl 8883, no ssl 1883;
@@ -35,9 +39,7 @@ const char humfeed[] = AIO_USERNAME "/feeds/room-monitor.humidity";
 const char vccfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc";
 const char vccrawfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc-raw";
 const char vccwarning[] = AIO_USERNAME "/feeds/room-monitor.vcc-warning";
-const char photorawfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-raw";
 const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-v";
-const char photorfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-r";
 const char pressurefeed[] = AIO_USERNAME "/feeds/room-monitor.pressure";
 
 
@@ -50,18 +52,16 @@ struct Measurements {
     float voltageSum = 0.0;
     unsigned char voltageCount = 0;
     int voltageRaw = 0;
-    int photoRaw = 0;
-    float photoVoltage = 0.0;
-    float photoValue = 0.0;
     int lastPowerWarningThreshold = 0;
     unsigned char reportIn = 0;
     float pressure = 0.0;
     float bmpTemp = 0.0;
+    int lightLevel = 0;
 } measurements;
 
-bool displayingTemp = false;
-
 Adafruit_BMP280 bmp; 
+BH1750 lightSensor(ligthSensAddr);
+
 
 WiFiClientSecure client;
 //WiFiClient client;
@@ -71,17 +71,8 @@ Adafruit_MQTT_Publish mqttHumFeed = Adafruit_MQTT_Publish(&mqtt,humfeed, MQTT_QO
 Adafruit_MQTT_Publish mqttVccFeed = Adafruit_MQTT_Publish(&mqtt,vccfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttVccRawFeed = Adafruit_MQTT_Publish(&mqtt,vccrawfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttVccWarning = Adafruit_MQTT_Publish(&mqtt,vccwarning, MQTT_QOS_1);
-Adafruit_MQTT_Publish mqttPhotoRawFeed = Adafruit_MQTT_Publish(&mqtt,photorawfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttPhotoVFeed = Adafruit_MQTT_Publish(&mqtt,photovfeed, MQTT_QOS_1);
-Adafruit_MQTT_Publish mqttPhotoRFeed = Adafruit_MQTT_Publish(&mqtt,photorfeed, MQTT_QOS_1);
 Adafruit_MQTT_Publish mqttPressureFeed = Adafruit_MQTT_Publish(&mqtt,pressurefeed, MQTT_QOS_1);
-
-
-Ticker displayBacklightTicker;
-volatile bool displayBacklightOn = false;
-volatile unsigned long displayBacklightOnSince = 0;
-boolean coldStart = true;
-
 
 void MQTTConect();
 void MQTTDisconnect();
@@ -90,9 +81,6 @@ void WIFIshowConnecting();
 void WIFIShowConnected();
 void verifyFingerprint();
 byte measureTemp();
-void lcdReset();
-void lcdTurnOnBacklight();
-void onDisplayButtonTriggered();
 
 
 void setup() {
@@ -117,6 +105,7 @@ void setup() {
         Serial.println("Unable to initialize bmp280");
         while(1);
     }
+    lightSensor.begin();
     Serial.println(F("Starting..."));
     WiFi.persistent(false);
     // WiFi.setSleepMode(WIFI_MODEM_SLEEP); //light sleep is more than default (modem sleep)
@@ -140,12 +129,8 @@ void printMeasurementsToSerial() {
     Serial.print(measurements.voltageSum / measurements.voltageCount);
     Serial.print(F(", vcc raw: "));
     Serial.print(measurements.voltageRaw);
-    Serial.print(F(", phot R: "));
-    Serial.print(measurements.photoValue);
-    Serial.print(F(", phot vol: "));
-    Serial.print(measurements.photoVoltage);
-    Serial.print(F(", phot raw: "));
-    Serial.print(measurements.photoRaw);
+    Serial.print(F(", light: "));
+    Serial.print(measurements.lightLevel);
 }
 
 float analogToVoltage(int analog) {
@@ -155,27 +140,23 @@ float analogToVoltage(int analog) {
     return analog * 0.00611; //calibrated from measurements and less errors from floating point arithmetics
 }
 
+bool coldStart = true;
+
 void loop() {
     MQTTConect();
     delay(100); //Let things settle a bit (mainly the power source voltage)
     //measure battery voltage
-    digitalWrite(controllAnalogIn, LOW);
     measurements.voltageRaw = analogRead(A0);
     measurements.voltage = analogToVoltage(measurements.voltageRaw);
     measurements.voltageSum += measurements.voltage;
     measurements.voltageCount++;
-    //measure light sensor
-    digitalWrite(controllAnalogIn, HIGH);
-    measurements.photoRaw = analogRead(A0);
-    measurements.photoVoltage = analogToVoltage(measurements.photoRaw);
-    //following should be the resistance of the photoresistor
-    measurements.photoValue = (measurements.voltage - measurements.photoVoltage) * 10.0 / measurements.photoVoltage; /*  * 10komh */ 
-    digitalWrite(controllAnalogIn, LOW);
     //SHT-30 measure temp and humidity
     byte measureRes = measureTemp(); 
     //measur pressure
     measurements.bmpTemp = bmp.readTemperature();
     measurements.pressure = bmp.readPressure();
+    //measure lipht
+    measurements.lightLevel = lightSensor.readLightLevel();
 
     printMeasurementsToSerial();
     Serial.println();
@@ -198,9 +179,7 @@ void loop() {
             measurements.voltageSum = 0.0;
             measurements.voltageCount = 0;
             succ = mqttVccRawFeed.publish(measurements.voltageRaw) && succ;
-            succ = mqttPhotoRawFeed.publish(measurements.photoRaw) && succ;
-            succ = mqttPhotoVFeed.publish(measurements.photoVoltage) && succ;
-            succ = mqttPhotoRFeed.publish(measurements.photoValue) && succ;
+            succ = mqttPhotoVFeed.publish(measurements.lightLevel) && succ;
             succ = mqttPressureFeed.publish(measurements.pressure) && succ;
             //Should we send power warning? We are sending value only when it goes under some threshold 
             //for the first time.
@@ -238,8 +217,7 @@ void loop() {
         }
     }
     
-    coldStart = false; //coldStart = firstRun
-
+    coldStart =  false;
     delay(measurmentDelayMs); 
 }
 
@@ -270,13 +248,6 @@ byte measureTemp() {
     measurements.humidity = ((((data[3] * 256.0) + data[4]) * 100) / 65535.0);
 
     return 0;
-}
-
-
-void onDisplayButtonTriggered() {
-    if (!displayBacklightOn) {
-        lcdTurnOnBacklight();
-    }
 }
 
 
@@ -371,10 +342,6 @@ void WIFIConect(bool debugBlink) {
     WIFIshowConnecting();    
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
-        if (coldStart) {
-            lcdTurnOnBacklight();
-        }
-        
         delay(250);
         delay(250);
         Serial.print(".");
