@@ -6,7 +6,7 @@ bool MeasurementProvider::begin() {
     return lsStatus && bmpStatus;
 }
 
-MeasurementsData MeasurementProvider::getCurrentMeasurements() {
+const MeasurementsData& MeasurementProvider::getCurrentMeasurements(){
     return data;
 }
 
@@ -14,8 +14,8 @@ bool MeasurementProvider::doMeasurements() {
     //measure battery voltage
     data.voltageRaw = analogRead(A0);
     data.voltage = analogToVoltage(data.voltageRaw);
-    data.voltageSum += data.voltage;
-    data.voltageCount++;
+    // data.voltageSum += data.voltage;
+    // data.voltageCount++;
     //SHT-30 measure temp and humidity
     byte tempMeasureRes = measureTemp(); 
     //measur pressure
@@ -71,7 +71,7 @@ float MeasurementProvider::analogToVoltage(int analog) {
 
 
 
-void MeasurementsData::printToSerial() {
+void MeasurementsData::printToSerial() const {
     Serial.print(F("temp: "));
     Serial.print(temperature);
     Serial.print(F(" ("));
@@ -83,8 +83,8 @@ void MeasurementsData::printToSerial() {
     Serial.print(pressure);
     Serial.print(F(", vcc: "));
     Serial.print(voltage);
-    Serial.print(F(", avg vcc: "));
-    Serial.print(voltageSum / voltageCount);
+    // Serial.print(F(", avg vcc: "));
+    // Serial.print(voltageSum / voltageCount);
     Serial.print(F(", vcc raw: "));
     Serial.print(voltageRaw);
     Serial.print(F(", light: "));

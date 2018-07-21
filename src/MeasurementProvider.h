@@ -12,22 +12,20 @@ class MeasurementsData {
         float temperature = 0.0;
         float humidity = 0.0;
         float voltage = 0.0;
-        float voltageSum = 0.0;
-        unsigned char voltageCount = 0;
         int voltageRaw = 0;
         int lastPowerWarningThreshold = 0;
         unsigned char reportIn = 0;
         float pressure = 0.0;
         float bmpTemp = 0.0;
         int lightLevel = 0;
-        void printToSerial();
+        void printToSerial() const;
     private:
 };
 
 class MeasurementProvider {
     public:
         MeasurementProvider(uint8_t tempSensAddr,  uint8_t lightSensAddr);
-        MeasurementsData getCurrentMeasurements();
+        const MeasurementsData& getCurrentMeasurements();
         /** @return true for success. */
         bool begin();
         /** @return true for success. */

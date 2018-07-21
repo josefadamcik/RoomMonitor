@@ -10,6 +10,7 @@
 #include <Ticker.h>
 #include <BH1750.h>
 #include "MeasurementProvider.h"
+#include "DataReporter.h"
 
 #define DEBUG true
 #define Serial if(DEBUG)Serial
@@ -31,7 +32,6 @@ const int publishEveryNMeasurements = 6; //how often will be measured value repo
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
 const int aioServerport = 8883; //ssl 8883, no ssl 1883;
-
 const char ssid[] = MYSSID; //put #define MYSSID "xyz" in keys.h
 const char password[] = MYPASS; //put #define MYPASS "blf" in keys.h
 const char aioUsername[] = AIO_USERNAME; //put #define AIO_USERNAME "xyz" in keys.h
@@ -43,8 +43,6 @@ const char vccrawfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc-raw";
 const char vccwarning[] = AIO_USERNAME "/feeds/room-monitor.vcc-warning";
 const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.light";
 const char pressurefeed[] = AIO_USERNAME "/feeds/room-monitor.pressure";
-
-
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 
 
@@ -104,7 +102,7 @@ void loop() {
     MQTTConect();
     delay(100); //Let things settle a bit (mainly the power source voltage)
     bool measureRes = measurement.doMeasurements();
-    MeasurementsData measurementData = measurement.getCurrentMeasurements();
+    const MeasurementsData measurementData = measurement.getCurrentMeasurements();
     measurementData.printToSerial();
     Serial.println();
 
@@ -120,10 +118,8 @@ void loop() {
             // bool succ = true;
             bool succ = mqttTempFeed.publish(measurementData.temperature);
             succ = mqttHumFeed.publish(measurementData.humidity) && succ;
-            const float reportedVoltage = measurementData.voltageSum / measurementData.voltageCount;
+            const float reportedVoltage = measurementData.voltage;
             succ = mqttVccFeed.publish(reportedVoltage) && succ;
-            measurementData.voltageSum = 0.0;
-            measurementData.voltageCount = 0;
             succ = mqttVccRawFeed.publish(measurementData.voltageRaw) && succ;
             succ = mqttPhotoVFeed.publish(measurementData.lightLevel) && succ;
             succ = mqttPressureFeed.publish(measurementData.pressure) && succ;
@@ -149,12 +145,12 @@ void loop() {
                 Serial.print(F("Reporting threshold: "));
                 Serial.print(currentThreshold);
                 mqttVccWarning.publish(currentThreshold);
-                measurementData.lastPowerWarningThreshold = currentThreshold;
+                //measurementData.lastPowerWarningThreshold = currentThreshold; //TODO
             }
 
             //success, we will reset counter, failur wont'
             if (succ) {
-                measurementData.reportIn = publishEveryNMeasurements - 1;
+                //measurementData.reportIn = publishEveryNMeasurements - 1; //TODO
                 Serial.println(F(" OK!"));
             } else {
                 Serial.println(F(" Failed"));
@@ -162,7 +158,7 @@ void loop() {
 //            MQTTDisconnect();
       } else {
             //count down
-            measurementData.reportIn--;
+            //measurementData.reportIn--; //TODO:
         }
     }
     
