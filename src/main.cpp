@@ -9,6 +9,7 @@
 #include <Adafruit_BMP280.h>
 #include <Ticker.h>
 #include <BH1750.h>
+#include "MeasurementProvider.h"
 
 #define DEBUG true
 #define Serial if(DEBUG)Serial
@@ -17,6 +18,7 @@ const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB C
 const int powerLowerThanWarningThresholds[] = {490, 480, 470}; //round(vcc * 10)
 const byte powerLowerThanWarningThresholdCount = 3;
 // const int powerLowerThanWarningThresholds[] = {520, 510, 500}; //round(vcc * 10)
+const bool vccReportingOn = false;
 
 const byte tempSensAddr = 0x45; 
 const byte ligthSensAddr = 0x23;
@@ -39,28 +41,14 @@ const char humfeed[] = AIO_USERNAME "/feeds/room-monitor.humidity";
 const char vccfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc";
 const char vccrawfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc-raw";
 const char vccwarning[] = AIO_USERNAME "/feeds/room-monitor.vcc-warning";
-const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.photo-v";
+const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.light";
 const char pressurefeed[] = AIO_USERNAME "/feeds/room-monitor.pressure";
 
 
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 
-struct Measurements {
-    float temperature = 0.0;
-    float humidity = 0.0;
-    float voltage = 0.0;
-    float voltageSum = 0.0;
-    unsigned char voltageCount = 0;
-    int voltageRaw = 0;
-    int lastPowerWarningThreshold = 0;
-    unsigned char reportIn = 0;
-    float pressure = 0.0;
-    float bmpTemp = 0.0;
-    int lightLevel = 0;
-} measurements;
 
-Adafruit_BMP280 bmp; 
-BH1750 lightSensor(ligthSensAddr);
+MeasurementProvider measurement(tempSensAddr, ligthSensAddr);
 
 
 WiFiClientSecure client;
@@ -100,44 +88,14 @@ void setup() {
     // Serial.println();
    
     Wire.begin(/*sda*/D2, /*scl*/D1);
-    bool bmpStatus = bmp.begin(0x76);
-    if (!bmpStatus) {
-        Serial.println("Unable to initialize bmp280");
+    if (!measurement.begin()) {
+        Serial.println("Unable to initialize measurement");
         while(1);
     }
-    lightSensor.begin();
     Serial.println(F("Starting..."));
     WiFi.persistent(false);
     // WiFi.setSleepMode(WIFI_MODEM_SLEEP); //light sleep is more than default (modem sleep)
     // WiFi.setSleepMode(WIFI_LIGHT_SLEEP); //light sleep is more than default (modem sleep)
-}
-
-
-void printMeasurementsToSerial() {
-    Serial.print(F("temp: "));
-    Serial.print(measurements.temperature);
-    Serial.print(F(" ("));
-    Serial.print(measurements.bmpTemp);
-    Serial.print(F(") "));
-    Serial.print(F(", hum: "));
-    Serial.print(measurements.humidity);
-    Serial.print(F(", press: "));
-    Serial.print(measurements.pressure);
-    Serial.print(F(", vcc: "));
-    Serial.print(measurements.voltage);
-    Serial.print(F(", avg vcc: "));
-    Serial.print(measurements.voltageSum / measurements.voltageCount);
-    Serial.print(F(", vcc raw: "));
-    Serial.print(measurements.voltageRaw);
-    Serial.print(F(", light: "));
-    Serial.print(measurements.lightLevel);
-}
-
-float analogToVoltage(int analog) {
-    //not used (analog / 1024.0f ) * 3.3f; //0-3.3, there's internal voltage divider 100k/220k
-    //0-6.6v, external voltage divider 220/(680 + internal divider in paralel) 
-    //return (analog / 1024.0f ) * 2.81f * 2.266f;
-    return analog * 0.00611; //calibrated from measurements and less errors from floating point arithmetics
 }
 
 bool coldStart = true;
@@ -145,42 +103,30 @@ bool coldStart = true;
 void loop() {
     MQTTConect();
     delay(100); //Let things settle a bit (mainly the power source voltage)
-    //measure battery voltage
-    measurements.voltageRaw = analogRead(A0);
-    measurements.voltage = analogToVoltage(measurements.voltageRaw);
-    measurements.voltageSum += measurements.voltage;
-    measurements.voltageCount++;
-    //SHT-30 measure temp and humidity
-    byte measureRes = measureTemp(); 
-    //measur pressure
-    measurements.bmpTemp = bmp.readTemperature();
-    measurements.pressure = bmp.readPressure();
-    //measure lipht
-    measurements.lightLevel = lightSensor.readLightLevel();
-
-    printMeasurementsToSerial();
+    bool measureRes = measurement.doMeasurements();
+    MeasurementsData measurementData = measurement.getCurrentMeasurements();
+    measurementData.printToSerial();
     Serial.println();
 
-    if (measureRes != 0) {
+    if (!measureRes) {
         Serial.println(F("Unable to measure temperature"));
-        Serial.println(measureRes);
     } else {
-        if (measurements.reportIn == 0) { //downcounter reached zero, we are publishing to mqtt
+        if (measurementData.reportIn == 0) { //downcounter reached zero, we are publishing to mqtt
             // MQTTConect();
             Serial.print(F("Sending measurements: "));
-            printMeasurementsToSerial();
+            measurementData.printToSerial();
             Serial.print(F("... "));
             //debug - dont send vaues
             // bool succ = true;
-            bool succ = mqttTempFeed.publish(measurements.temperature);
-            succ = mqttHumFeed.publish(measurements.humidity) && succ;
-            const float reportedVoltage = measurements.voltageSum / measurements.voltageCount;
+            bool succ = mqttTempFeed.publish(measurementData.temperature);
+            succ = mqttHumFeed.publish(measurementData.humidity) && succ;
+            const float reportedVoltage = measurementData.voltageSum / measurementData.voltageCount;
             succ = mqttVccFeed.publish(reportedVoltage) && succ;
-            measurements.voltageSum = 0.0;
-            measurements.voltageCount = 0;
-            succ = mqttVccRawFeed.publish(measurements.voltageRaw) && succ;
-            succ = mqttPhotoVFeed.publish(measurements.lightLevel) && succ;
-            succ = mqttPressureFeed.publish(measurements.pressure) && succ;
+            measurementData.voltageSum = 0.0;
+            measurementData.voltageCount = 0;
+            succ = mqttVccRawFeed.publish(measurementData.voltageRaw) && succ;
+            succ = mqttPhotoVFeed.publish(measurementData.lightLevel) && succ;
+            succ = mqttPressureFeed.publish(measurementData.pressure) && succ;
             //Should we send power warning? We are sending value only when it goes under some threshold 
             //for the first time.
             //detect actual threshold
@@ -188,7 +134,7 @@ void loop() {
             Serial.print(F("Computed threshold: "));
             Serial.print(thresholdValue);
             Serial.print(F(" last: "));
-            Serial.println(measurements.lastPowerWarningThreshold);
+            Serial.println(measurementData.lastPowerWarningThreshold);
             int currentThreshold = 0;
             for (unsigned char i = 0; i < powerLowerThanWarningThresholdCount; i++) {
                 if (thresholdValue <= powerLowerThanWarningThresholds[i]) {
@@ -196,16 +142,19 @@ void loop() {
                 }
             }
 
-            if (!coldStart && currentThreshold > 0 && currentThreshold != measurements.lastPowerWarningThreshold) {
+            if (vccReportingOn 
+                    && !coldStart 
+                    && currentThreshold > 0 
+                    && currentThreshold != measurementData.lastPowerWarningThreshold) {
                 Serial.print(F("Reporting threshold: "));
                 Serial.print(currentThreshold);
                 mqttVccWarning.publish(currentThreshold);
-                measurements.lastPowerWarningThreshold = currentThreshold;
+                measurementData.lastPowerWarningThreshold = currentThreshold;
             }
 
             //success, we will reset counter, failur wont'
             if (succ) {
-                measurements.reportIn = publishEveryNMeasurements - 1;
+                measurementData.reportIn = publishEveryNMeasurements - 1;
                 Serial.println(F(" OK!"));
             } else {
                 Serial.println(F(" Failed"));
@@ -213,7 +162,7 @@ void loop() {
 //            MQTTDisconnect();
       } else {
             //count down
-            measurements.reportIn--;
+            measurementData.reportIn--;
         }
     }
     
@@ -221,39 +170,11 @@ void loop() {
     delay(measurmentDelayMs); 
 }
 
-byte measureTemp() {
-    unsigned int data[6];
-
-    Wire.beginTransmission(tempSensAddr);
-    // measurement command
-    Wire.write(0x2C);
-    Wire.write(0x06);
-    if (Wire.endTransmission() != 0)  {
-        return 1;
-    }
-    delay(500);
-    // Request 6 bytes of data
-    Wire.requestFrom(tempSensAddr, 6);
-    // cTemp msb, cTemp lsb, cTemp crc, humidity msb, humidity lsb, humidity crc
-    for (int i=0;i<6;i++) {
-        data[i]=Wire.read();
-    };
-    delay(50);
-
-    if (Wire.available() != 0) {
-        return 2;
-    }
-    // Convert the data
-    measurements.temperature = ((((data[0] * 256.0) + data[1]) * 175) / 65535.0) - 45;
-    measurements.humidity = ((((data[3] * 256.0) + data[4]) * 100) / 65535.0);
-
-    return 0;
-}
 
 
 void MQTTConect() {
     int wifiStatus = WiFi.status();
-    if(wifiStatus != WL_CONNECTED){
+    if (wifiStatus != WL_CONNECTED){
         Serial.println();
         Serial.print(F("WiFi not connected, status: "));
         Serial.print(wifiStatus);
