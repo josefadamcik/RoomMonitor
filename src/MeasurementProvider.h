@@ -13,7 +13,6 @@ class MeasurementsData {
         float humidity = 0.0;
         float voltage = 0.0;
         int voltageRaw = 0;
-        int lastPowerWarningThreshold = 0;
         unsigned char reportIn = 0;
         float pressure = 0.0;
         float bmpTemp = 0.0;
@@ -31,7 +30,7 @@ class MeasurementProvider {
         /** @return true for success. */
         bool doMeasurements();
     private:
-        uint8_t tempSensAddress;
+        const uint8_t tempSensAddress;
         Adafruit_BMP280 bmp; 
         BH1750 lightSensor;
         MeasurementsData data;
