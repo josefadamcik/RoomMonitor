@@ -9,20 +9,20 @@
 #include <Adafruit_BMP280.h>
 #include <Ticker.h>
 #include <BH1750.h>
+#include "debug.h"
 #include "MeasurementProvider.h"
 #include "DataReporter.h"
 
-#define DEBUG true
-#define Serial if(DEBUG)Serial
+
 
 const byte tempSensAddr = 0x45; 
 const byte ligthSensAddr = 0x23;
 //1min
-const unsigned long measurmentDelayMs = 10 * 1000; //10s
-const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
+//  const unsigned long measurmentDelayMs = 10 * 1000; //10s
+//  const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
 //5min
-// const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
-// const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
+const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
+const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
 const int aioServerport = 8883; //ssl 8883, no ssl 1883;
@@ -78,10 +78,8 @@ void setup() {
         Serial.println("Unable to initialize measurement");
         while(1);
     }
+    reporter.begin();
     Serial.println(F("Starting..."));
-    WiFi.persistent(false);
-    // WiFi.setSleepMode(WIFI_MODEM_SLEEP); //light sleep is more than default (modem sleep)
-    // WiFi.setSleepMode(WIFI_LIGHT_SLEEP); //light sleep is more than default (modem sleep)
 }
 
 void loop() {
@@ -96,7 +94,7 @@ void loop() {
     } else {
         reporter.doReport(measurementData);
     }
-    
+    Serial.println(F("Loop end."));
     delay(measurmentDelayMs); 
 }
 

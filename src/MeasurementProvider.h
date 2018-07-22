@@ -1,10 +1,11 @@
-#ifndef MEASUREMENTS_PROVIDER
-#define MEASUREMENTS_PROVIDER
+#ifndef MEASUREMENTS_PROVIDER_h
+#define MEASUREMENTS_PROVIDER_h
 
 #include <Arduino.h>
 #include <BH1750.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_Sensor.h>
+#include "debug.h"
 
 
 class MeasurementsData {
@@ -38,16 +39,6 @@ class MeasurementProvider {
         uint8_t measureTemp();
         float analogToVoltage(int analog);
 };
-
-MeasurementProvider::MeasurementProvider(uint8_t tempSensAddr,  uint8_t lightSensAddr) 
-    : tempSensAddress(tempSensAddr), lightSensor(lightSensAddr)  {
-}
-
-
-
-
-
-
 
 #endif 
 

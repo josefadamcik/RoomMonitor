@@ -1,5 +1,10 @@
 #include "MeasurementProvider.h"
 
+MeasurementProvider::MeasurementProvider(uint8_t tempSensAddr,  uint8_t lightSensAddr) 
+     : tempSensAddress(tempSensAddr), lightSensor(lightSensAddr)  {
+}
+
+
 bool MeasurementProvider::begin() {
     bool lsStatus = lightSensor.begin();
     bool bmpStatus = bmp.begin(0x76);
