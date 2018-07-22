@@ -6,7 +6,7 @@ MeasurementProvider::MeasurementProvider(uint8_t tempSensAddr,  uint8_t lightSen
 
 
 bool MeasurementProvider::begin() {
-    bool lsStatus = lightSensor.begin();
+    bool lsStatus = lightSensor.begin(BH1750::ONE_TIME_HIGH_RES_MODE); //goes to sleep after mea
     bool bmpStatus = bmp.begin(0x76);
     return lsStatus && bmpStatus;
 }
@@ -42,8 +42,8 @@ byte MeasurementProvider::measureTemp() {
     unsigned int data[6];
 
     Wire.beginTransmission(tempSensAddress);
-    // measurement command
-    Wire.write(0x2C);
+    // measurement command -> one shot measurement, clock stretching, high repeatability
+    Wire.write(0x2C); 
     Wire.write(0x06);
     if (Wire.endTransmission() != 0)  {
         return 1;

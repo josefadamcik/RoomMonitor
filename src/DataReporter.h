@@ -7,6 +7,7 @@
 #include <Adafruit_MQTT.h>
 #include <Adafruit_MQTT_Client.h>
 #include "debug.h"
+#include "BatteryMonitor.h"
 #include "MeasurementProvider.h"
 
 const int powerLowerThanWarningThresholds[] = {490, 480, 470}; //round(vcc * 10)
@@ -69,7 +70,8 @@ class DataReporter {
         DataReporter(
             const WifiSetup& wifi,
             const ServerSetup& server, 
-            const FeedsSetup& feed
+            const FeedsSetup& feed,
+            BatteryMonitor* battery
         ) : wifiSetup(wifi),
             serverSetup(server),
             mqtt(&client, server.aioServer, server.aioServerPort, server.aioUsername, server.aioKey),
@@ -79,7 +81,8 @@ class DataReporter {
             mqttVccRawFeed(&mqtt,feed.vccrawfeed, MQTT_QOS_1),
             mqttVccWarning(&mqtt,feed.vccwarning, MQTT_QOS_1),
             mqttPhotoVFeed(&mqtt,feed.photovfeed, MQTT_QOS_1),
-            mqttPressureFeed(&mqtt,feed.pressurefeed, MQTT_QOS_1)
+            mqttPressureFeed(&mqtt,feed.pressurefeed, MQTT_QOS_1),
+            batteryMonitor(battery)
         {};
         /** Call in setup() */
         void begin();
@@ -98,6 +101,7 @@ class DataReporter {
         Adafruit_MQTT_Publish mqttVccWarning;
         Adafruit_MQTT_Publish mqttPhotoVFeed;
         Adafruit_MQTT_Publish mqttPressureFeed;
+        BatteryMonitor* batteryMonitor;
         void MQTTConect();
         void MQTTDisconnect();
         void WIFIConect();

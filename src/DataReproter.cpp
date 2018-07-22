@@ -27,6 +27,13 @@ void DataReporter::doReport(const MeasurementsData& measurementData) {
     succ = mqttPhotoVFeed.publish(measurementData.lightLevel) && succ;
     succ = mqttPressureFeed.publish(measurementData.pressure) && succ;
 
+    bool triggerVccWarning = batteryMonitor->checkBattery(measurementData.voltage);
+
+    if (triggerVccWarning) {
+        Serial.println(F("Triggered battery monitor"));
+        succ = mqttVccWarning.publish(measurementData.voltage) && succ;
+    }
+
     //success, we will reset counter, failur wont'
     if (succ) {
         Serial.println(F(" OK!"));

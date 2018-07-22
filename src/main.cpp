@@ -10,6 +10,7 @@
 #include <Ticker.h>
 #include <BH1750.h>
 #include "debug.h"
+#include "BatteryMonitor.h"
 #include "MeasurementProvider.h"
 #include "DataReporter.h"
 extern "C" { //esp8266 sdk, if we need to call deep sleep apis directly
@@ -40,6 +41,8 @@ const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.light";
 const char pressurefeed[] = AIO_USERNAME "/feeds/room-monitor.pressure";
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 
+// BatteryMonitor batteryMonitor(280,360);
+BatteryMonitor batteryMonitor(340,360);
 
 DataReporter reporter(
     WifiSetup( ssid, password ),
@@ -52,7 +55,8 @@ DataReporter reporter(
         vccwarning,
         photovfeed,
         pressurefeed
-    )
+    ),
+    &batteryMonitor
 );
 
 MeasurementProvider measurement(tempSensAddr, ligthSensAddr);
@@ -84,6 +88,9 @@ void setup() {
         Serial.println(F("Unable to measure temperature"));
     } else {
         reporter.doReport(measurementData);
+        
+        Serial.print(F("BatteryMonitor state: "));
+        Serial.println(batteryMonitor.getState().triggered);
     }
     Serial.println(F("Loop end"));
     
@@ -99,6 +106,7 @@ void setup() {
 void loop() {
     // NOP
 }
+
 
 
 
