@@ -17,9 +17,9 @@
 const byte tempSensAddr = 0x45; 
 const byte ligthSensAddr = 0x23;
 //1min
-const unsigned long sleepForUs = 60 * 1000000; //1m
+// const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
-// const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
+const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
 const int aioServerport = 8883; //ssl 8883, no ssl 1883;
