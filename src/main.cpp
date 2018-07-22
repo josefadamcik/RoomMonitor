@@ -12,17 +12,18 @@
 #include "debug.h"
 #include "MeasurementProvider.h"
 #include "DataReporter.h"
-
+extern "C" { //esp8266 sdk, if we need to call deep sleep apis directly
+    #include "user_interface.h" 
+}
 
 
 const byte tempSensAddr = 0x45; 
 const byte ligthSensAddr = 0x23;
 //1min
-//  const unsigned long measurmentDelayMs = 10 * 1000; //10s
-//  const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay
+const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
-const unsigned long measurmentDelayMs = 1 * 60 * 1000; //1m
-const int publishEveryNMeasurements = 5; //how often will be measured value reported in relatino to measurementDelay
+// const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
+
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
 const int aioServerport = 8883; //ssl 8883, no ssl 1883;
@@ -51,51 +52,52 @@ DataReporter reporter(
         vccwarning,
         photovfeed,
         pressurefeed
-    ),
-    publishEveryNMeasurements
+    )
 );
 
 MeasurementProvider measurement(tempSensAddr, ligthSensAddr);
 
+/**
+ * Everything happens in setup, we have nothing in loop because we are sleeping all the time.
+ */ 
 void setup() {
     Serial.begin(115200);
     Serial.println();
-    //deep sleep state recovery, not yet used
-    // uint32_t control;
-    // ESP.rtcUserMemoryRead(0, &control, sizeof(uint32_t));
-    // Serial.print("setup found, control: ");
-    // Serial.print(control);
-    // if (control == 0) {
-    //     coldStart = false;
-    //     ESP.rtcUserMemoryRead(4, &measurements.reportIn, sizeof(uint32_t));
-    //     Serial.print(", reportIn: ");
-    //     Serial.print(measurements.reportIn);
-    // }
-    // Serial.println();
+    Serial.println(F("Starting..."));
    
     Wire.begin(/*sda*/D2, /*scl*/D1);
     if (!measurement.begin()) {
         Serial.println("Unable to initialize measurement");
         while(1);
     }
-    reporter.begin();
-    Serial.println(F("Starting..."));
-}
 
-void loop() {
-    delay(250); //Let things settle a bit (mainly the power source voltage)
+    //start wifi and mqtt
+    reporter.begin();
+    reporter.ensureWifiConnection();
+    delay(100); //Let things settle 
+    
+    //do measurements and report
     bool measureRes = measurement.doMeasurements();
     const MeasurementsData measurementData = measurement.getCurrentMeasurements();
-    measurementData.printToSerial();
-    Serial.println();
 
     if (!measureRes) {
         Serial.println(F("Unable to measure temperature"));
     } else {
         reporter.doReport(measurementData);
     }
-    Serial.println(F("Loop end."));
-    delay(measurmentDelayMs); 
+    Serial.println(F("Loop end"));
+    
+    //finish thins up
+    reporter.closeConnections();
+    Serial.println(F("Go to sleep..."));
+    Serial.flush();
+    //sleep deeply
+    ESP.deepSleep(sleepForUs, WAKE_RF_DEFAULT);
+    delay(500);
+}
+
+void loop() {
+    // NOP
 }
 
 

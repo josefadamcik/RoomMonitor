@@ -69,11 +69,9 @@ class DataReporter {
         DataReporter(
             const WifiSetup& wifi,
             const ServerSetup& server, 
-            const FeedsSetup& feed,
-            int publishEveryNCalls 
+            const FeedsSetup& feed
         ) : wifiSetup(wifi),
             serverSetup(server),
-            publishEveryNMeasurements(publishEveryNCalls),
             mqtt(&client, server.aioServer, server.aioServerPort, server.aioUsername, server.aioKey),
             mqttTempFeed(&mqtt,feed.tempfeed, MQTT_QOS_1),
             mqttHumFeed(&mqtt,feed.humfeed, MQTT_QOS_1),
@@ -85,11 +83,12 @@ class DataReporter {
         {};
         /** Call in setup() */
         void begin();
+        void ensureWifiConnection();
         void doReport(const MeasurementsData& data);
+        void closeConnections();
     private:
         const WifiSetup wifiSetup;
         const ServerSetup serverSetup;
-        const int publishEveryNMeasurements = 6; //how often will be measured value reported in relatino to measurementDelay        
         WiFiClientSecure client;
         Adafruit_MQTT_Client mqtt;
         Adafruit_MQTT_Publish mqttTempFeed;
@@ -99,13 +98,9 @@ class DataReporter {
         Adafruit_MQTT_Publish mqttVccWarning;
         Adafruit_MQTT_Publish mqttPhotoVFeed;
         Adafruit_MQTT_Publish mqttPressureFeed;
-
-        int reportIn = 0;
-        int lastPowerWarningThreshold = 0;
-
         void MQTTConect();
         void MQTTDisconnect();
-        void WIFIConect(bool debugBlink);
+        void WIFIConect();
         void verifyFingerprint();
 };
 

@@ -3,59 +3,35 @@
 
 void DataReporter::begin() {
     WiFi.persistent(false);
-//        WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
+}
+
+void DataReporter::ensureWifiConnection() {
+    WIFIConect();
+}
+
+void DataReporter::closeConnections() {
+    MQTTDisconnect();
 }
 
 void DataReporter::doReport(const MeasurementsData& measurementData) {
-    if (reportIn == 0) { //downcounter reached zero, we are publishing to mqtt
-        MQTTConect();
-        Serial.print(F("Sending measurements: "));
-        measurementData.printToSerial();
-        Serial.print(F("... "));
-        // bool succ = true;
-        bool succ = mqttTempFeed.publish(measurementData.temperature);
-        succ = mqttHumFeed.publish(measurementData.humidity) && succ;
-        const float reportedVoltage = measurementData.voltage;
-        succ = mqttVccFeed.publish(reportedVoltage) && succ;
-        succ = mqttVccRawFeed.publish(measurementData.voltageRaw) && succ;
-        succ = mqttPhotoVFeed.publish(measurementData.lightLevel) && succ;
-        succ = mqttPressureFeed.publish(measurementData.pressure) && succ;
-        //Should we send power warning? We are sending value only when it goes under some threshold 
-        //for the first time.
-        //detect actual threshold
-        const int thresholdValue = roundf(reportedVoltage * 100.0f);
-        Serial.print(F("Computed threshold: "));
-        Serial.print(thresholdValue);
-        Serial.print(F(" last: "));
-        Serial.println(lastPowerWarningThreshold);
-        int currentThreshold = 0;
-        for (unsigned char i = 0; i < powerLowerThanWarningThresholdCount; i++) {
-            if (thresholdValue <= powerLowerThanWarningThresholds[i]) {
-                currentThreshold = powerLowerThanWarningThresholds[i];
-            }
-        }
+    MQTTConect();
+    Serial.print(F("Sending measurements: "));
+    measurementData.printToSerial();
+    Serial.print(F("... "));
+    // bool succ = true;
+    bool succ = mqttTempFeed.publish(measurementData.temperature);
+    succ = mqttHumFeed.publish(measurementData.humidity) && succ;
+    const float reportedVoltage = measurementData.voltage;
+    succ = mqttVccFeed.publish(reportedVoltage) && succ;
+    succ = mqttVccRawFeed.publish(measurementData.voltageRaw) && succ;
+    succ = mqttPhotoVFeed.publish(measurementData.lightLevel) && succ;
+    succ = mqttPressureFeed.publish(measurementData.pressure) && succ;
 
-        if (vccReportingOn 
-                && currentThreshold > 0 
-                && currentThreshold != lastPowerWarningThreshold) {
-            Serial.print(F("Reporting threshold: "));
-            Serial.print(currentThreshold);
-            mqttVccWarning.publish(currentThreshold);
-            lastPowerWarningThreshold = currentThreshold; //TODO: separate somehow
-        }
-
-        //success, we will reset counter, failur wont'
-        if (succ) {
-            reportIn = publishEveryNMeasurements - 1; 
-            Serial.println(F(" OK!"));
-        } else {
-            Serial.println(F(" Failed"));
-        }
-        //dont' disconnect at the moment, better power management before we introduce deep sleep again.
-        //MQTTDisconnect();
+    //success, we will reset counter, failur wont'
+    if (succ) {
+        Serial.println(F(" OK!"));
     } else {
-        //count down
-        reportIn--;
+        Serial.println(F(" Failed"));
     }
 }
 
@@ -100,9 +76,9 @@ void DataReporter::MQTTConect() {
     uint8_t retries = 3;
     while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
         Serial.println(mqtt.connectErrorString(ret));
-        Serial.println(F("Retr MQTT connection in 5 seconds..."));
+        Serial.println(F("Retr MQTT connection in 1 second..."));
         mqtt.disconnect();
-        delay(5000);  // wait 5 seconds
+        delay(1000); 
         retries--;
         if (retries == 0) {
             // basically die and wait for WDT to reset me
@@ -139,12 +115,11 @@ void DataReporter::MQTTDisconnect() {
 
 
 
-void DataReporter::WIFIConect(bool debugBlink) {
+void DataReporter::WIFIConect() {
     WiFi.begin(wifiSetup.ssid, wifiSetup.key);
     while (WiFi.status() != WL_CONNECTED) {
         delay(250);
-        delay(250);
-        Serial.print(".");
+        Serial.print(F("."));
     }   
     Serial.println(F("Setup done"));
     verifyFingerprint();
