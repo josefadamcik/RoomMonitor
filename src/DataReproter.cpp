@@ -18,11 +18,9 @@ void DataReporter::doReport(const MeasurementsData& measurementData) {
     Serial.print(F("Sending measurements: "));
     measurementData.printToSerial();
     Serial.print(F("... "));
-    // bool succ = true;
     bool succ = mqttTempFeed.publish(measurementData.temperature);
     succ = mqttHumFeed.publish(measurementData.humidity) && succ;
-    const float reportedVoltage = measurementData.voltage;
-    succ = mqttVccFeed.publish(reportedVoltage) && succ;
+    succ = mqttVccFeed.publish(measurementData.voltage) && succ;
     succ = mqttVccRawFeed.publish(measurementData.voltageRaw) && succ;
     succ = mqttPhotoVFeed.publish(measurementData.lightLevel) && succ;
     succ = mqttPressureFeed.publish(measurementData.pressure) && succ;
@@ -34,7 +32,6 @@ void DataReporter::doReport(const MeasurementsData& measurementData) {
         succ = mqttVccWarning.publish(measurementData.voltage) && succ;
     }
 
-    //success, we will reset counter, failur wont'
     if (succ) {
         Serial.println(F(" OK!"));
     } else {
@@ -59,8 +56,7 @@ void DataReporter::MQTTConect() {
         }
         
         while (WiFi.status() != WL_CONNECTED) {
-            delay(250);
-            delay(250);
+            delay(500);
             Serial.print(WiFi.status());
         }
         Serial.println();

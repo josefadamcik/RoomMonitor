@@ -2,11 +2,17 @@
 #define BATTERY_MONITOR_h
 
 #include <math.h> 
+#include "Arduino.h"
 
 struct BatteryMonitorState {
     public:
-        BatteryMonitorState(bool v) : triggered(v) {};
         const bool triggered;
+        /** 
+         * We will set this to special know value before we store it into persistent memory, before deep sleep.
+         * So after wakep we can distinguish random junk in memory from our stored value.
+         */
+        uint32_t magic; 
+        BatteryMonitorState(bool v) : triggered(v) {};
 };
 
 class BatteryMonitor {
@@ -29,6 +35,7 @@ class BatteryMonitor {
          */
         bool checkBattery(float voltage);
         BatteryMonitorState getState();
+        void setState(const BatteryMonitorState& oldState);
     private:
         const int triggerThreshold;
         const int resetThreshold;

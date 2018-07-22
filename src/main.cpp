@@ -13,10 +13,6 @@
 #include "BatteryMonitor.h"
 #include "MeasurementProvider.h"
 #include "DataReporter.h"
-extern "C" { //esp8266 sdk, if we need to call deep sleep apis directly
-    #include "user_interface.h" 
-}
-
 
 const byte tempSensAddr = 0x45; 
 const byte ligthSensAddr = 0x23;
@@ -24,7 +20,6 @@ const byte ligthSensAddr = 0x23;
 const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
 // const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
-
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
 const int aioServerport = 8883; //ssl 8883, no ssl 1883;
@@ -41,8 +36,11 @@ const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.light";
 const char pressurefeed[] = AIO_USERNAME "/feeds/room-monitor.pressure";
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 
-// BatteryMonitor batteryMonitor(280,360);
-BatteryMonitor batteryMonitor(340,360);
+
+const uint32_t deepSleepStateMagic = 0x8af2bc12;
+
+BatteryMonitor batteryMonitor(290,360);
+//BatteryMonitor batteryMonitor(340,360);
 
 DataReporter reporter(
     WifiSetup( ssid, password ),
@@ -68,7 +66,20 @@ void setup() {
     Serial.begin(115200);
     Serial.println();
     Serial.println(F("Starting..."));
-   
+
+    //restor state from rtc memory 
+    BatteryMonitorState oldState(false);
+    ESP.rtcUserMemoryRead(0, reinterpret_cast<uint32_t*>(&oldState), sizeof(oldState));
+
+
+    if (oldState.magic != deepSleepStateMagic) { //FIRST RUN
+        Serial.println(F("First run!"));
+    } else { //state restored
+        Serial.print(F("Recoverd old state... battery: "));
+        Serial.println(oldState.triggered);
+        batteryMonitor.setState(oldState);
+    }
+
     Wire.begin(/*sda*/D2, /*scl*/D1);
     if (!measurement.begin()) {
         Serial.println("Unable to initialize measurement");
@@ -89,15 +100,24 @@ void setup() {
     } else {
         reporter.doReport(measurementData);
         
-        Serial.print(F("BatteryMonitor state: "));
-        Serial.println(batteryMonitor.getState().triggered);
     }
     Serial.println(F("Loop end"));
-    
+
+
     //finish thins up
     reporter.closeConnections();
     Serial.println(F("Go to sleep..."));
     Serial.flush();
+    
+    BatteryMonitorState newBatteryState = batteryMonitor.getState();
+    Serial.print(F("BatteryMonitor state: "));
+    Serial.println(newBatteryState.triggered);
+
+    //writ state to rtc memory
+    newBatteryState.magic = deepSleepStateMagic;
+    ESP.rtcUserMemoryWrite(0, reinterpret_cast<uint32_t*>(&newBatteryState), sizeof(newBatteryState));
+    delay(1);
+
     //sleep deeply
     ESP.deepSleep(sleepForUs, WAKE_RF_DEFAULT);
     delay(500);
