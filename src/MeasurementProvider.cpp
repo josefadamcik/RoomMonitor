@@ -22,31 +22,40 @@ bool MeasurementProvider::doMeasurements() {
     // data.voltageSum += data.voltage;
     // data.voltageCount++;
     //SHT-30 measure temp and humidity
-    byte tempMeasureRes = measureTemp(); 
-    //measur pressure
-    data.bmpTemp = bmp.readTemperature();
-    data.pressure = bmp.readPressure();
-    //measure lipht
-    data.lightLevel = lightSensor.readLightLevel();
+    byte tempMeasureRes;
+    int retryMeasurement = 3;
+    do {
+        retryMeasurement--;
+        tempMeasureRes = measureTemp();
+        if (tempMeasureRes != 0) {
+            Serial.println(F("Unable to measure temperature"));
+            Serial.println(tempMeasureRes);
+        }
+    } while (tempMeasureRes != 0 && retryMeasurement > 0);
 
     if (tempMeasureRes != 0) {
-        Serial.println(F("Unable to measure temperature"));
-        Serial.println(tempMeasureRes);
         return false;
     }
+
+    // measur pressure
+    data.bmpTemp = bmp.readTemperature();
+    data.pressure = bmp.readPressure();
+    // measure lipht
+    data.lightLevel = lightSensor.readLightLevel();
 
     return true;
 }
 
 byte MeasurementProvider::measureTemp() {
     unsigned int data[6];
-
+    Wire.setTimeout(500);
     Wire.beginTransmission(tempSensAddress);
     // measurement command -> one shot measurement, clock stretching, high repeatability
     Wire.write(0x2C); 
     Wire.write(0x06);
-    if (Wire.endTransmission() != 0)  {
-        return 1;
+    uint8_t wireResult = Wire.endTransmission();
+    if (wireResult != 0)  {
+        return wireResult;
     }
     delay(500);
     // Request 6 bytes of data
@@ -58,7 +67,7 @@ byte MeasurementProvider::measureTemp() {
     delay(50);
 
     if (Wire.available() != 0) {
-        return 2;
+        return 20;
     }
     // Convert the data
     this->data.temperature = ((((data[0] * 256.0) + data[1]) * 175) / 65535.0) - 45;

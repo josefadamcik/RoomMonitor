@@ -14,13 +14,15 @@
 #include "MeasurementProvider.h"
 #include "DataReporter.h"
 #include <ArduinoOTA.h>
+#include <ESP8266HTTPClient.h>
+
 
 const byte tempSensAddr = 0x45; 
 const byte ligthSensAddr = 0x23;
 //1min
-// const unsigned long sleepForUs = 60 * 1000000; //1m
+const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
-const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
+// const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
 const int aioServerport = 8883; //ssl 8883, no ssl 1883;
@@ -87,6 +89,7 @@ void setup() {
     Wire.begin(/*sda*/D2, /*scl*/D1);
     if (!measurement.begin()) {
         Serial.println("Unable to initialize measurement");
+        //TODO: report error, go to sleep. Don't loop.
         while(1);
     }
 
@@ -122,7 +125,7 @@ void setup() {
     // the OTA reflash
     bool waiforOTA = false;
     Serial.println("Waiting for any OTA updates");
-    int keeptrying = 20;
+    int keeptrying = 5;
     while (keeptrying-- > 0 || waiforOTA == true) {
         if (digitalRead(D3) == LOW) {
             waiforOTA = true;
@@ -145,9 +148,10 @@ void setup() {
     }
     Serial.println(F("Loop end"));
 
-    //finish thins up
+    //finish things up
     reporter.closeConnections();
-    Serial.println(F("Go to sleep..."));
+    Serial.print(F("Go to sleep..."));
+    Serial.println(sleepForUs);
     Serial.flush();
     
     BatteryMonitorState newBatteryState = batteryMonitor.getState();

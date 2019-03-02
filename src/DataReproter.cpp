@@ -124,6 +124,7 @@ void DataReporter::WIFIConect() {
         delay(250);
         Serial.print(F("."));
     }   
+    Serial.println(WiFi.status());
     Serial.println(F("Setup done"));
     verifyFingerprint();
 }
