@@ -2,7 +2,10 @@
 
 
 void DataReporter::begin() {
+    WiFi.forceSleepWake();
+    delay(1);
     WiFi.persistent(false);
+    WiFi.mode(WIFI_STA);
 }
 
 void DataReporter::ensureWifiConnection() {
@@ -105,14 +108,15 @@ void DataReporter::MQTTDisconnect() {
     }
     int wifiStatus = WiFi.status();
     if(wifiStatus == WL_CONNECTED) {
-        WiFi.disconnect();
+        WiFi.disconnect(true);
+        delay(1);
+        Serial.println("Wifi disconnected...");
     }
-    if (WiFi.getMode() != WIFI_OFF ) {
-        Serial.println("Wifi off...");
-        WiFi.mode(WIFI_OFF); //really turn off -> without this it would actually consume more power than when connected
-        WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
-    }
-    
+    // if (WiFi.getMode() != WIFI_OFF ) {
+    //     Serial.println("Wifi off...");
+    //     WiFi.mode(WIFI_OFF); //really turn off -> without this it would actually consume more power than when connected
+    //     WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
+    // }
 }
 
 

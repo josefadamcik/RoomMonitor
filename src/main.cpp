@@ -38,6 +38,7 @@ const char vccwarning[] = AIO_USERNAME "/feeds/room-monitor.vcc-warning";
 const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.light";
 const char pressurefeed[] = AIO_USERNAME "/feeds/room-monitor.pressure";
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
+bool measurementReady = false;
 
 
 const uint32_t deepSleepStateMagic = 0x8af2bc12;
@@ -62,43 +63,7 @@ DataReporter reporter(
 
 MeasurementProvider measurement(tempSensAddr, ligthSensAddr);
 
-/**
- * Everything happens in setup, we have nothing in loop because we are sleeping all the time.
- */ 
-void setup() {
-    delay(100);
-    Serial.begin(57600);
-    Serial.println();
-    Serial.println(F("Starting..."));
-
-    pinMode(D3, INPUT_PULLUP);
-
-    //restor state from rtc memory 
-    BatteryMonitorState oldState(false);
-    ESP.rtcUserMemoryRead(0, reinterpret_cast<uint32_t*>(&oldState), sizeof(oldState));
-
-
-    if (oldState.magic != deepSleepStateMagic) { //FIRST RUN
-        Serial.println(F("First run!"));
-    } else { //state restored
-        Serial.print(F("Recoverd old state... battery: "));
-        Serial.println(oldState.triggered);
-        batteryMonitor.setState(oldState);
-    }
-
-    Wire.begin(/*sda*/D2, /*scl*/D1);
-    Wire.setTimeout(500);
-    if (!measurement.begin()) {
-        Serial.println("Unable to initialize measurement");
-        //TODO: report error, go to sleep. Don't loop.
-        // while(1);
-    }
-
-    //start wifi and mqtt
-    reporter.begin();
-    reporter.ensureWifiConnection();
-    delay(100); //Let things settle
-
+void otaInitialize() {
     // Initialise OTA in case there is a software upgrade
     ArduinoOTA.setHostname("roommonitor.local");
     ArduinoOTA.onStart([]() { Serial.println("Start"); });
@@ -121,43 +86,94 @@ void setup() {
     });
 
     ArduinoOTA.begin();
+}
 
-    // wait 10 secs and check if button pressed, which will trigger a wait for
-    // the OTA reflash
+/**
+ * Everything happens in setup, we have nothing in loop because we are sleeping all the time.
+ */ 
+void setup() {
+    //switch radio off to save energy
+    WiFi.mode(WIFI_OFF);
+    WiFi.forceSleepBegin();
+    delay(100);
+
+    Serial.begin(57600);
+    Serial.println();
+    Serial.println(F("Starting..."));
+
+    pinMode(D3, INPUT_PULLUP);
+
+    //restor state from rtc memory 
+    BatteryMonitorState oldState(false);
+    ESP.rtcUserMemoryRead(0, reinterpret_cast<uint32_t*>(&oldState), sizeof(oldState));
+
+    if (oldState.magic != deepSleepStateMagic) { //FIRST RUN
+        Serial.println(F("First run!"));
+    } else { //state restored
+        Serial.print(F("Recoverd old state... battery: "));
+        Serial.println(oldState.triggered);
+        batteryMonitor.setState(oldState);
+    }
+
+    // wait a few sec for OTA button press, when the button is pressed we will be waiting for OTA update.
     bool waiforOTA = false;
     Serial.println("Waiting for any OTA updates");
     int keeptrying = 5;
-    while (keeptrying-- > 0 || waiforOTA == true) {
+    while (keeptrying-- > 0 && !waiforOTA) {
         if (digitalRead(D3) == LOW) {
             waiforOTA = true;
-            Serial.print("OTA");
+            Serial.println();
+            Serial.println("Will wait for OTA");
+            break;
         }
         Serial.print(".");
-        ArduinoOTA.handle();
         delay(500);
     }
 
-    // do measurements and report
-    bool measureRes = measurement.doMeasurements();
-    const MeasurementsData measurementData = measurement.getCurrentMeasurements();
-
-    if (!measureRes) {
-        Serial.println(F("Unable to measure temperature"));
+    if (waiforOTA) {
+        reporter.begin();
+        reporter.ensureWifiConnection();
+        otaInitialize();
+        while(1) {
+            Serial.print(".");
+            ArduinoOTA.handle();
+            delay(500);
+        }
+    } 
+    Serial.println("No OTA update");
+    //no ota update (there will be restart after ota or manual restart if ota was not performed)
+    Wire.begin(/*sda*/D2, /*scl*/D1);
+    Wire.setTimeout(500);
+    measurementReady = measurement.begin();
+    if (!measurementReady) {
+        Serial.println("Unable to initialize measurement");
     } else {
-        reporter.doReport(measurementData);
-        
-    }
-    Serial.println(F("Loop end"));
+        // do measurements
+        bool measureRes = measurement.doMeasurements();
+        const MeasurementsData measurementData =
+            measurement.getCurrentMeasurements();
 
-    //finish things up
-    reporter.closeConnections();
+        if (!measureRes) {
+            Serial.println(F("Unable to measure"));
+        } else {
+            // start wifi and mqtt
+            reporter.begin();
+            reporter.ensureWifiConnection();
+            // report
+            reporter.doReport(measurementData);
+            delay(100);
+            // finish things up
+            reporter.closeConnections();
+        }
+    }
+
+    Serial.println(F("Loop end"));
     Serial.print(F("Go to sleep..."));
     Serial.println(sleepForUs);
-    Serial.flush();
-    
     BatteryMonitorState newBatteryState = batteryMonitor.getState();
     Serial.print(F("BatteryMonitor state: "));
     Serial.println(newBatteryState.triggered);
+    Serial.flush();
 
     //writ state to rtc memory
     newBatteryState.magic = deepSleepStateMagic;
@@ -165,7 +181,7 @@ void setup() {
     delay(2);
 
     //sleep deeply
-    ESP.deepSleep(sleepForUs, WAKE_RF_DEFAULT);
+    ESP.deepSleep(sleepForUs, WAKE_RF_DISABLED);
     delay(500);
 }
 
