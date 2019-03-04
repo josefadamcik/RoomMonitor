@@ -40,14 +40,17 @@ const char pressurefeed[] = AIO_USERNAME "/feeds/room-monitor.pressure";
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 bool measurementReady = false;
 
+IPAddress ip(192, 168, 178, 27);
+IPAddress gateway(192, 168, 178, 1);
+IPAddress subnet(255, 255, 255, 0);
+
 
 const uint32_t deepSleepStateMagic = 0x8af2bc12;
 
 BatteryMonitor batteryMonitor(290,360);
-//BatteryMonitor batteryMonitor(340,360);
 
 DataReporter reporter(
-    WifiSetup( ssid, password ),
+    WifiSetup( ssid, password, ip, gateway, subnet ),
     ServerSetup( aioServer, aioServerport, aioUsername, aioKey ),
     FeedsSetup(
         tempfeed,
@@ -140,8 +143,9 @@ void setup() {
             delay(500);
         }
     } 
+
     Serial.println("No OTA update");
-    //no ota update (there will be restart after ota or manual restart if ota was not performed)
+    //no ota update (there will be restart after OTA or manual restart if ota was not performed)
     Wire.begin(/*sda*/D2, /*scl*/D1);
     Wire.setTimeout(500);
     measurementReady = measurement.begin();
@@ -152,7 +156,6 @@ void setup() {
         bool measureRes = measurement.doMeasurements();
         const MeasurementsData measurementData =
             measurement.getCurrentMeasurements();
-
         if (!measureRes) {
             Serial.println(F("Unable to measure"));
         } else {

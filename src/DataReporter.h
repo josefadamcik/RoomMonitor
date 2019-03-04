@@ -20,10 +20,18 @@ const bool vccReportingOn = false;
 
 class WifiSetup {
     public:
-        WifiSetup(const char wifiSsid[], const char wifiKey[]) 
-            : ssid(wifiSsid), key(wifiKey) {};
-        const char* ssid;
-        const char* key;
+     WifiSetup(
+        const char wifiSsid[], 
+        const char wifiKey[], 
+        IPAddress ip,
+        IPAddress gateway,
+        IPAddress subnet
+    ) : ssid(wifiSsid), key(wifiKey), ip(ip), gateway(gateway), subnet(subnet) {};
+     const char* ssid;
+     const char* key;
+     IPAddress ip;
+     IPAddress gateway;
+     IPAddress subnet;
 };
 
 class ServerSetup {

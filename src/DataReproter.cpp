@@ -6,6 +6,7 @@ void DataReporter::begin() {
     delay(1);
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
+    WiFi.config(wifiSetup.ip, wifiSetup.gateway, wifiSetup.subnet, wifiSetup.gateway, wifiSetup.gateway);
 }
 
 void DataReporter::ensureWifiConnection() {
@@ -112,27 +113,24 @@ void DataReporter::MQTTDisconnect() {
         delay(1);
         Serial.println("Wifi disconnected...");
     }
-    // if (WiFi.getMode() != WIFI_OFF ) {
-    //     Serial.println("Wifi off...");
-    //     WiFi.mode(WIFI_OFF); //really turn off -> without this it would actually consume more power than when connected
-    //     WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
-    // }
+    if (WiFi.getMode() != WIFI_OFF ) {
+        WiFi.mode(WIFI_OFF); //really turn off -> without this it would actually consume more power than when connected
+        WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
+        delay(1);
+        Serial.println("Wifi off...");
+    }
 }
-
-
-
 
 void DataReporter::WIFIConect() {
     WiFi.begin(wifiSetup.ssid, wifiSetup.key);
     while (WiFi.status() != WL_CONNECTED) {
-        delay(250);
+        delay(100);
         Serial.print(F("."));
     }   
     Serial.println(WiFi.status());
     Serial.println(F("Setup done"));
     verifyFingerprint();
 }
-
 
 void DataReporter::verifyFingerprint() {
   Serial.println(serverSetup.aioServer);
@@ -149,5 +147,4 @@ void DataReporter::verifyFingerprint() {
 
   client.stop(); //otherwise the MQTT.connected() will return true, because the implementation
   // just asks the client if there is a connectioni. It actully doesn't check if there was a mqtt connection established.
-
 }
