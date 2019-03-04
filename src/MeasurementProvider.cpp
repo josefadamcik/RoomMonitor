@@ -19,8 +19,6 @@ bool MeasurementProvider::doMeasurements() {
     //measure battery voltage
     data.voltageRaw = analogRead(A0);
     data.voltage = analogToVoltage(data.voltageRaw);
-    // data.voltageSum += data.voltage;
-    // data.voltageCount++;
     //SHT-30 measure temp and humidity
     byte tempMeasureRes;
     int retryMeasurement = 3;
@@ -30,6 +28,7 @@ bool MeasurementProvider::doMeasurements() {
         if (tempMeasureRes != 0) {
             Serial.println(F("Unable to measure temperature"));
             Serial.println(tempMeasureRes);
+            delay(100);
         }
     } while (tempMeasureRes != 0 && retryMeasurement > 0);
 
@@ -48,7 +47,6 @@ bool MeasurementProvider::doMeasurements() {
 
 byte MeasurementProvider::measureTemp() {
     unsigned int data[6];
-    Wire.setTimeout(500);
     Wire.beginTransmission(tempSensAddress);
     // measurement command -> one shot measurement, clock stretching, high repeatability
     Wire.write(0x2C); 

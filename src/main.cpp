@@ -19,7 +19,7 @@
 
 const byte tempSensAddr = 0x45; 
 const byte ligthSensAddr = 0x23;
-//1min
+// //1min
 const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
 // const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
@@ -87,10 +87,11 @@ void setup() {
     }
 
     Wire.begin(/*sda*/D2, /*scl*/D1);
+    Wire.setTimeout(500);
     if (!measurement.begin()) {
         Serial.println("Unable to initialize measurement");
         //TODO: report error, go to sleep. Don't loop.
-        while(1);
+        // while(1);
     }
 
     //start wifi and mqtt
