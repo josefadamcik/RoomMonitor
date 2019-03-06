@@ -50,22 +50,8 @@ void DataReporter::MQTTConect() {
         Serial.print(F("WiFi not connected, status: "));
         Serial.print(wifiStatus);
         Serial.println();
-        if (WiFi.getMode() != WIFI_STA) {
-            WiFi.mode(WIFI_STA);
-        }
-        if (wifiStatus == WL_DISCONNECTED || wifiStatus == WL_CONNECTION_LOST) {
-            WiFi.reconnect();
-        } else {
-            WiFi.begin(wifiSetup.ssid, wifiSetup.key);
-        }
-        
-        while (WiFi.status() != WL_CONNECTED) {
-            delay(500);
-            Serial.print(WiFi.status());
-        }
-        Serial.println();
-        verifyFingerprint();
-    }  
+        return;
+    }
 
     int8_t ret;
 
@@ -85,13 +71,12 @@ void DataReporter::MQTTConect() {
         Serial.println(mqtt.connectErrorString(ret));
         Serial.println(F("Retr MQTT connection in 1 second..."));
         mqtt.disconnect();
-        delay(1000); 
+        delay(250); 
         retries--;
         if (retries == 0) {
-            // basically die and wait for WDT to reset me
-            while (1);
+            return; //lets go to sleep we'll see the next time..
         }
-    }   
+    }
 
     if (mqtt.connected()) {
         Serial.println(F(" MQTT Connected!"));
@@ -100,8 +85,6 @@ void DataReporter::MQTTConect() {
         Serial.println(ret);
     }
 }
-
-
 
 void DataReporter::MQTTDisconnect() {
     if (mqtt.connected()) {
@@ -112,12 +95,6 @@ void DataReporter::MQTTDisconnect() {
         WiFi.disconnect(true);
         delay(1);
         Serial.println("Wifi disconnected...");
-    }
-    if (WiFi.getMode() != WIFI_OFF ) {
-        WiFi.mode(WIFI_OFF); //really turn off -> without this it would actually consume more power than when connected
-        WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
-        delay(1);
-        Serial.println("Wifi off...");
     }
 }
 
