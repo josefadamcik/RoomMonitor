@@ -93,10 +93,10 @@ class DataReporter {
             batteryMonitor(battery)
         {};
         /** Call in setup() */
-        void begin();
-        void ensureWifiConnection();
+        void begin(const RoomMonitorState& state);
         void doReport(const MeasurementsData& data);
         void closeConnections();
+        RoomMonitorState getState(bool baterryWarningTriggered);
     private:
         const WifiSetup wifiSetup;
         const ServerSetup serverSetup;
@@ -112,7 +112,7 @@ class DataReporter {
         BatteryMonitor* batteryMonitor;
         void MQTTConect();
         void MQTTDisconnect();
-        void WIFIConect();
+        void WIFIConect(const RoomMonitorState& state);
         void verifyFingerprint();
 };
 

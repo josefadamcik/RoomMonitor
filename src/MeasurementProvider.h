@@ -5,6 +5,7 @@
 #include <BH1750.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_Sensor.h>
+#include "RoomMonitorState.h"
 #include "debug.h"
 
 
@@ -30,12 +31,11 @@ class MeasurementProvider {
         bool begin();
         /** @return true for success. */
         bool doMeasurements();
-    private:
-        const uint8_t tempSensAddress;
+        RoomMonitorState getWifiSetup();
+    private : const uint8_t tempSensAddress;
         Adafruit_BMP280 bmp; 
         BH1750 lightSensor;
         MeasurementsData data;
-
         uint8_t measureTemp();
         float analogToVoltage(int analog);
 };

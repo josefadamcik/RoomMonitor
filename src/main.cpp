@@ -45,9 +45,11 @@ IPAddress gateway(192, 168, 178, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 
-const uint32_t deepSleepStateMagic = 0x8af2bc12;
+const uint32_t deepSleepStateMagic = 0x8af2ba12;
 
 BatteryMonitor batteryMonitor(290,360);
+
+RoomMonitorState oldState;
 
 DataReporter reporter(
     WifiSetup( ssid, password, ip, gateway, subnet ),
@@ -91,6 +93,31 @@ void otaInitialize() {
     ArduinoOTA.begin();
 }
 
+void storeState() {
+    RoomMonitorState newState = reporter.getState(batteryMonitor.triggered);
+    Serial.print(F("RoomMonitorState state: "));
+    Serial.println(newState.triggered);
+    if (newState.validWifi) {
+        Serial.println(F("Valid Wifi setup"));
+        Serial.print(F("Channel: "));
+        Serial.println(newState.channel);
+        Serial.print(F("BSSID: "));
+        for (byte i = 0; i < 6; i++) {
+            Serial.print(newState.bssid[i]);
+            Serial.print(F(":"));
+        }
+        Serial.println();
+    } else {
+        Serial.println(F("No valid wifi setup."));
+    }
+
+    // writ state to rtc memory
+    newState.magic = deepSleepStateMagic;
+    ESP.rtcUserMemoryWrite(0, reinterpret_cast<uint32_t*>(&newState),
+                           sizeof(newState));
+    delay(2);
+}
+
 /**
  * Everything happens in setup, we have nothing in loop because we are sleeping all the time.
  */ 
@@ -107,15 +134,17 @@ void setup() {
     pinMode(D3, INPUT_PULLUP);
 
     //restor state from rtc memory 
-    BatteryMonitorState oldState(false);
+
     ESP.rtcUserMemoryRead(0, reinterpret_cast<uint32_t*>(&oldState), sizeof(oldState));
 
     if (oldState.magic != deepSleepStateMagic) { //FIRST RUN
         Serial.println(F("First run!"));
+        oldState.valid = false;
     } else { //state restored
+        oldState.valid = true;
         Serial.print(F("Recoverd old state... battery: "));
         Serial.println(oldState.triggered);
-        batteryMonitor.setState(oldState);
+        batteryMonitor.setState(oldState.triggered);
     }
 
     // wait a few sec for OTA button press, when the button is pressed we will be waiting for OTA update.
@@ -134,8 +163,7 @@ void setup() {
     }
 
     if (waiforOTA) {
-        reporter.begin();
-        reporter.ensureWifiConnection();
+        reporter.begin(oldState);
         otaInitialize();
         while(1) {
             Serial.print(".");
@@ -154,38 +182,26 @@ void setup() {
     } else {
         // do measurements
         bool measureRes = measurement.doMeasurements();
-        const MeasurementsData measurementData =
-            measurement.getCurrentMeasurements();
+        const MeasurementsData measurementData = measurement.getCurrentMeasurements();
         if (!measureRes) {
             Serial.println(F("Unable to measure"));
         } else {
             // start wifi and mqtt
-            reporter.begin();
-            reporter.ensureWifiConnection();
+            reporter.begin(oldState);
             // report
             reporter.doReport(measurementData);
+            //store state
+            storeState();
             delay(100);
             // finish things up
             reporter.closeConnections();
         }
     }
-
-    Serial.println(F("Loop end"));
     Serial.print(F("Go to sleep..."));
     Serial.println(sleepForUs);
-    BatteryMonitorState newBatteryState = batteryMonitor.getState();
-    Serial.print(F("BatteryMonitor state: "));
-    Serial.println(newBatteryState.triggered);
     Serial.flush();
-
-    //writ state to rtc memory
-    newBatteryState.magic = deepSleepStateMagic;
-    ESP.rtcUserMemoryWrite(0, reinterpret_cast<uint32_t*>(&newBatteryState), sizeof(newBatteryState));
-    delay(2);
-
     //sleep deeply
     ESP.deepSleep(sleepForUs, WAKE_RF_DISABLED);
-    delay(500);
 }
 
 void loop() {

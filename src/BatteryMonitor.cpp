@@ -15,11 +15,6 @@ bool BatteryMonitor::checkBattery(float voltage) {
     return false;
 }
 
-
-BatteryMonitorState BatteryMonitor::getState() {
-    return BatteryMonitorState(triggered);
-}
-
-void BatteryMonitor::setState(const BatteryMonitorState& oldState) {
-    triggered = oldState.triggered;
+void BatteryMonitor::setState(bool oldState) {
+    triggered = oldState;
 }

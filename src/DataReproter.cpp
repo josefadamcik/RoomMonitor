@@ -1,16 +1,25 @@
 #include "DataReporter.h"
 
-
-void DataReporter::begin() {
+void DataReporter::begin(const RoomMonitorState& state) {
     WiFi.forceSleepWake();
     delay(1);
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
     WiFi.config(wifiSetup.ip, wifiSetup.gateway, wifiSetup.subnet, wifiSetup.gateway, wifiSetup.gateway);
+    WIFIConect(state);
 }
 
-void DataReporter::ensureWifiConnection() {
-    WIFIConect();
+RoomMonitorState DataReporter::getState(bool baterryWarningTriggered) {
+    RoomMonitorState newState;
+    newState.triggered = baterryWarningTriggered;
+    if (WiFi.status() == WL_CONNECTED) {
+        newState.channel = WiFi.channel();
+        memcpy(newState.bssid, WiFi.BSSID(), 6);
+        newState.validWifi = true;
+    } else {
+        newState.validWifi = false;
+    }
+    return newState;
 }
 
 void DataReporter::closeConnections() {
@@ -98,12 +107,44 @@ void DataReporter::MQTTDisconnect() {
     }
 }
 
-void DataReporter::WIFIConect() {
-    WiFi.begin(wifiSetup.ssid, wifiSetup.key);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(100);
-        Serial.print(F("."));
-    }   
+void DataReporter::WIFIConect(const RoomMonitorState& state) {
+    bool quickSetup = false;
+    if (state.valid && state.validWifi) {
+        quickSetup = true;
+        WiFi.begin(wifiSetup.ssid, wifiSetup.key, state.channel, state.bssid, true);
+    } else {
+        WiFi.begin(wifiSetup.ssid, wifiSetup.key);
+    }
+    int retries = 0;
+    int wifiStatus = WiFi.status();
+    while (wifiStatus != WL_CONNECTED) {
+        retries++;
+        if (retries == 100 && quickSetup) {
+            Serial.println(F("QC Failed"));
+            // Quick connect is not working, reset WiFi and try regular
+            // connection
+            WiFi.disconnect();
+            delay(10);
+            WiFi.forceSleepBegin();
+            delay(10);
+            WiFi.forceSleepWake();
+            delay(10);
+            WiFi.begin(wifiSetup.ssid, wifiSetup.key);
+        }
+        if (retries == 600) {
+            Serial.println(F("Give up"));
+            // Giving up after 30 seconds and going back to sleep
+            WiFi.disconnect(true);
+            delay(1);
+            WiFi.mode(WIFI_OFF);
+            return;
+        }
+        if (retries % 10 == 0) {
+            Serial.print(F("."));
+        }
+        delay(50);
+        wifiStatus = WiFi.status();
+    }
     Serial.println(WiFi.status());
     Serial.println(F("Setup done"));
     verifyFingerprint();
