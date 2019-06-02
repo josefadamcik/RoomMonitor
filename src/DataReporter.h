@@ -13,10 +13,7 @@
 const int powerLowerThanWarningThresholds[] = {490, 480, 470}; //round(vcc * 10)
 const byte powerLowerThanWarningThresholdCount = 3;
 // const int powerLowerThanWarningThresholds[] = {520, 510, 500}; //round(vcc * 10)
-const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18";
 const bool vccReportingOn = false;
-
-
 
 class WifiSetup {
     public:
@@ -100,7 +97,7 @@ class DataReporter {
     private:
         const WifiSetup wifiSetup;
         const ServerSetup serverSetup;
-        WiFiClientSecure client;
+        WiFiClient client;
         Adafruit_MQTT_Client mqtt;
         Adafruit_MQTT_Publish mqttTempFeed;
         Adafruit_MQTT_Publish mqttHumFeed;

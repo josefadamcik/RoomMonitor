@@ -16,7 +16,6 @@
 #include <ArduinoOTA.h>
 #include <ESP8266HTTPClient.h>
 
-
 const byte tempSensAddr = 0x45; 
 const byte ligthSensAddr = 0x23;
 // //1min
@@ -25,7 +24,7 @@ const byte ligthSensAddr = 0x23;
 const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
 const char aioServer[] = "io.adafruit.com";
 //const char aioServer[] = "192.168.178.29";
-const int aioServerport = 8883; //ssl 8883, no ssl 1883;
+const int aioServerport = 1883; //ssl 8883, no ssl 1883;
 const char ssid[] = MYSSID; //put #define MYSSID "xyz" in keys.h
 const char password[] = MYPASS; //put #define MYPASS "blf" in keys.h
 const char aioUsername[] = AIO_USERNAME; //put #define AIO_USERNAME "xyz" in keys.h

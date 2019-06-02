@@ -151,18 +151,18 @@ void DataReporter::WIFIConect(const RoomMonitorState& state) {
 }
 
 void DataReporter::verifyFingerprint() {
-  Serial.println(serverSetup.aioServer);
-  if (! client.connect(serverSetup.aioServer, serverSetup.aioServerPort)) {
-    Serial.println(F("Connection failed."));
-    while(1);
-  }
-  if (client.verify(aioSslFingreprint, serverSetup.aioServer)) {
-    Serial.println(F("Connection secure."));
-  } else {
-    Serial.println(F("Connection insecure!"));
-    while(1);
-  }
+//   S erial.println(serverSetup.aioServer);
+//   if (! client.connect(serverSetup.aioServer, serverSetup.aioServerPort)) {
+//     Serial.println(F("Connection failed."));
+//     while(1);
+//   }
+//   if (client.verify(aioSslFingreprint, serverSetup.aioServer)) {
+//     Serial.println(F("Connection secure."));
+//   } else {
+//     Serial.println(F("Connection insecure!"));
+//     while(1);
+//   }
 
-  client.stop(); //otherwise the MQTT.connected() will return true, because the implementation
+//   client.stop();  //otherwise the MQTT.connected() will return true, because the implementation
   // just asks the client if there is a connectioni. It actully doesn't check if there was a mqtt connection established.
 }

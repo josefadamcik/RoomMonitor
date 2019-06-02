@@ -78,7 +78,8 @@ float MeasurementProvider::analogToVoltage(int analog) {
     //not used (analog / 1024.0f ) * 3.3f; //0-3.3, there's internal voltage divider 100k/220k
     //0-6.6v, external voltage divider 220/(680 + internal divider in paralel) 
     //return (analog / 1024.0f ) * 2.81f * 2.266f;
-    return analog * 0.00611; //calibrated from measurements and less errors from floating point arithmetics
+    return analog * 0.004904651; //coeficient for white breakout and 1m/250k voltage divider.
+    // keeficient for D1 MINI 0.00611; //calibrated from measurements and less errors from floating point arithmetics
 }
 
 
