@@ -3,11 +3,10 @@
 
 #include <Arduino.h>
 #include <BH1750.h>
-#include <Adafruit_BMP280.h>
+// #include <Adafruit_BMP280.h>
 #include <Adafruit_Sensor.h>
 #include "RoomMonitorState.h"
 #include "debug.h"
-
 
 class MeasurementsData {
     public:
@@ -33,10 +32,12 @@ class MeasurementProvider {
         bool doMeasurements();
         RoomMonitorState getWifiSetup();
     private : const uint8_t tempSensAddress;
-        Adafruit_BMP280 bmp; 
+        // Adafruit_BMP280 bmp; 
         BH1750 lightSensor;
         MeasurementsData data;
-        uint8_t measureTemp();
+        uint8_t measureTempSTH30();
+        uint8_t measureTempSTH21(); 
+        float readFloatSHT21(uint8_t command);
         float analogToVoltage(int analog);
 };
 

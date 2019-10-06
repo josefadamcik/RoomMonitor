@@ -4,7 +4,6 @@
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <SPI.h>
-#include <Adafruit_BMP280.h>
 #include <Ticker.h>
 #include <BH1750.h>
 #include "debug.h"
@@ -15,7 +14,7 @@
 #include <ESP8266HTTPClient.h>
 
 const byte tempSensAddr = 0x45; 
-const byte ligthSensAddr = 0x23;
+const byte ligthSensAddr = 0x40;//sht30 - 0x23, sht21 0x40
 // //1min
 // const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
