@@ -2,6 +2,8 @@
 
 #define SHT21_TRIGGER_TEMP_MEASURE_NOHOLD  0xF3
 #define SHT21_TRIGGER_HUMD_MEASURE_NOHOLD  0xF5
+#define SHT21_TRIGGER_TEMP_MEASURE_HOLD  0xE3
+#define SHT21_TRIGGER_HUMD_MEASURE_HOLD  0xE5
 
 MeasurementProvider::MeasurementProvider(uint8_t tempSensAddr,  uint8_t lightSensAddr) 
      : tempSensAddress(tempSensAddr), lightSensor(lightSensAddr)  {
@@ -41,7 +43,7 @@ bool MeasurementProvider::doMeasurements() {
     //SHT21
     data.temperature = 0;
     data.humidity = 0;
-    // measureTempSTH21();
+    measureTempSTH21();
 
     // measur pressure
     // data.bmpTemp = bmp.readTemperature();
@@ -85,8 +87,8 @@ byte MeasurementProvider::measureTempSTH30() {
 
 uint8_t MeasurementProvider::measureTempSTH21() {
     // Convert the data
-    this->data.temperature = (-6.0 + 125.0 / 65536.0 * readFloatSHT21(SHT21_TRIGGER_TEMP_MEASURE_NOHOLD));
-    this->data.humidity = (-46.85 + 175.72 / 65536.0 * readFloatSHT21(SHT21_TRIGGER_HUMD_MEASURE_NOHOLD));
+    this->data.humidity = (-6.0 + 125.0 / 65536.0 * readFloatSHT21(SHT21_TRIGGER_HUMD_MEASURE_HOLD));
+    this->data.temperature = (-46.85 + 175.72 / 65536.0 * readFloatSHT21(SHT21_TRIGGER_TEMP_MEASURE_HOLD));
     return 0;
 }
 
