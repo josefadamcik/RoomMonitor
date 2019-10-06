@@ -34,7 +34,8 @@ const char pressurefeed[] = "home/" ROOM_NAME "/pressure";
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 bool measurementReady = false;
 
-IPAddress ip(192, 168, 178, 33);
+// IPAddress ip(192, 168, 178, 33); //bedroom (old prototype)
+IPAddress ip(192, 168, 178, 50);  //living-room (new pcb)
 IPAddress gateway(192, 168, 178, 1);
 IPAddress subnet(255, 255, 255, 0);
 
