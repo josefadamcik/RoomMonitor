@@ -2,8 +2,6 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <Wire.h>
-#include <Adafruit_MQTT.h>
-#include <Adafruit_MQTT_Client.h>
 #include <Adafruit_Sensor.h>
 #include <SPI.h>
 #include <Adafruit_BMP280.h>
@@ -22,28 +20,23 @@ const byte ligthSensAddr = 0x23;
 // const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
 const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
-const char aioServer[] = "io.adafruit.com";
-//const char aioServer[] = "192.168.178.29";
-const int aioServerport = 1883; //ssl 8883, no ssl 1883;
+const char mqttServer[] = "192.168.178.31";
+const int mqttServerport = 1883; 
 const char ssid[] = MYSSID; //put #define MYSSID "xyz" in keys.h
 const char password[] = MYPASS; //put #define MYPASS "blf" in keys.h
-const char aioUsername[] = AIO_USERNAME; //put #define AIO_USERNAME "xyz" in keys.h
-const char aioKey[] = AIO_KEY; //put #define AIO_KEY "xyz" in keys.h
-const char tempfeed[] = AIO_USERNAME "/feeds/room-monitor.temperature";
-const char humfeed[] = AIO_USERNAME "/feeds/room-monitor.humidity";
-const char vccfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc";
-const char vccrawfeed[] = AIO_USERNAME "/feeds/room-monitor.vcc-raw";
-const char vccwarning[] = AIO_USERNAME "/feeds/room-monitor.vcc-warning";
-const char photovfeed[] = AIO_USERNAME "/feeds/room-monitor.light";
-const char pressurefeed[] = AIO_USERNAME "/feeds/room-monitor.pressure";
+const char tempfeed[] = "home/" ROOM_NAME "/temperature";
+const char humfeed[] = "home/" ROOM_NAME "/humidity";
+const char vccfeed[] = "home/" ROOM_NAME "/vcc";
+const char vccrawfeed[] = "home/" ROOM_NAME "/vcc-raw";
+const char vccwarning[] = "home/" ROOM_NAME "/vcc-warning";
+const char photovfeed[] = "home/" ROOM_NAME "/light";
+const char pressurefeed[] = "home/" ROOM_NAME "/pressure";
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
-const char aioSslFingreprint[] = "77 00 54 2D DA E7 D8 03 27 31 23 99 EB 27 DB CB A5 4C 57 18";
 bool measurementReady = false;
 
 IPAddress ip(192, 168, 178, 33);
 IPAddress gateway(192, 168, 178, 1);
 IPAddress subnet(255, 255, 255, 0);
-
 
 const uint32_t deepSleepStateMagic = 0x8af2ba12;
 
@@ -53,7 +46,7 @@ RoomMonitorState oldState;
 
 DataReporter reporter(
     WifiSetup( ssid, password, ip, gateway, subnet ),
-    ServerSetup( aioServer, aioServerport, aioUsername, aioKey ),
+    ServerSetup( mqttServer, mqttServerport),
     FeedsSetup(
         tempfeed,
         humfeed,

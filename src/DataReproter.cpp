@@ -7,6 +7,9 @@ void DataReporter::begin(const RoomMonitorState& state) {
     WiFi.mode(WIFI_STA);
     WiFi.config(wifiSetup.ip, wifiSetup.gateway, wifiSetup.subnet, wifiSetup.gateway, wifiSetup.gateway);
     WIFIConect(state);
+
+    pubSubClient.setClient(client);
+    pubSubClient.setServer(serverSetup.mqttServer, serverSetup.mqttServerPort);
 }
 
 RoomMonitorState DataReporter::getState(bool baterryWarningTriggered) {
@@ -23,7 +26,7 @@ RoomMonitorState DataReporter::getState(bool baterryWarningTriggered) {
 }
 
 void DataReporter::closeConnections() {
-    MQTTDisconnect();
+    pubSubClient.disconnect();
 }
 
 void DataReporter::doReport(const MeasurementsData& measurementData) {
@@ -31,18 +34,26 @@ void DataReporter::doReport(const MeasurementsData& measurementData) {
     Serial.print(F("Sending measurements: "));
     measurementData.printToSerial();
     Serial.print(F("... "));
-    bool succ = mqttTempFeed.publish(measurementData.temperature);
-    succ = mqttHumFeed.publish(measurementData.humidity) && succ;
-    succ = mqttVccFeed.publish(measurementData.voltage) && succ;
-    succ = mqttVccRawFeed.publish(measurementData.voltageRaw) && succ;
-    succ = mqttPhotoVFeed.publish(measurementData.lightLevel) && succ;
-    succ = mqttPressureFeed.publish(measurementData.pressure) && succ;
+    char tmpStr[8]; // Buffer big enough for 7-character float
+    dtostrf(measurementData.temperature, 4, 2, tmpStr);
+    bool succ = pubSubClient.publish(feedsSetup.tempfeed, tmpStr, true);
+    dtostrf(measurementData.humidity, 4, 2, tmpStr);
+    succ = succ && pubSubClient.publish(feedsSetup.humfeed, tmpStr, true);
+    dtostrf(measurementData.voltage, 4, 2, tmpStr);
+    succ = succ && pubSubClient.publish(feedsSetup.vccfeed, tmpStr, true);
+    dtostrf(measurementData.voltageRaw, 1, 0, tmpStr);
+    succ = succ && pubSubClient.publish(feedsSetup.vccrawfeed, tmpStr, true);
+    dtostrf(measurementData.lightLevel, 1, 0, tmpStr);
+    succ = succ && pubSubClient.publish(feedsSetup.photovfeed, tmpStr, true);
+    dtostrf(measurementData.pressure, 1, 0, tmpStr);
+    succ = succ && pubSubClient.publish(feedsSetup.pressurefeed, tmpStr, true);
 
     bool triggerVccWarning = batteryMonitor->checkBattery(measurementData.voltage);
 
     if (triggerVccWarning) {
         Serial.println(F("Triggered battery monitor"));
-        succ = mqttVccWarning.publish(measurementData.voltage) && succ;
+        dtostrf(measurementData.voltage, 6, 2, tmpStr);
+        succ = succ && pubSubClient.publish(feedsSetup.vccwarning, tmpStr, true);
     }
 
     if (succ) {
@@ -62,24 +73,19 @@ void DataReporter::MQTTConect() {
         return;
     }
 
-    int8_t ret;
-
     // Stop if already connected, but double check with ping
-    if (mqtt.connected()) {
-        if (mqtt.ping()) {
-            return;
-        } else {
-            Serial.println(F("Connected was true, but ping returned false"));
-            mqtt.disconnect();
-        }
+    if (pubSubClient.connected()) {
+        return;
     }
     Serial.print(F("Connecting to MQTT... "));
 
+    int8_t ret = 0;
     uint8_t retries = 3;
-    while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
-        Serial.println(mqtt.connectErrorString(ret));
+    while (!pubSubClient.connect("RoomMonitor." ROOM_NAME)) { // connect will return 0 for connected
+        ret = pubSubClient.state();
         Serial.println(F("Retr MQTT connection in 1 second..."));
-        mqtt.disconnect();
+        Serial.println(ret);
+        pubSubClient.disconnect();
         delay(250); 
         retries--;
         if (retries == 0) {
@@ -87,7 +93,7 @@ void DataReporter::MQTTConect() {
         }
     }
 
-    if (mqtt.connected()) {
+    if (pubSubClient.connected()) {
         Serial.println(F(" MQTT Connected!"));
     } else {
         Serial.print(F(" MQTT still NOT onnected! "));
@@ -96,8 +102,8 @@ void DataReporter::MQTTConect() {
 }
 
 void DataReporter::MQTTDisconnect() {
-    if (mqtt.connected()) {
-        mqtt.disconnect();
+    if (pubSubClient.connected()) {
+        pubSubClient.disconnect();
     }
     int wifiStatus = WiFi.status();
     if(wifiStatus == WL_CONNECTED) {
@@ -147,22 +153,5 @@ void DataReporter::WIFIConect(const RoomMonitorState& state) {
     }
     Serial.println(WiFi.status());
     Serial.println(F("Setup done"));
-    verifyFingerprint();
 }
 
-void DataReporter::verifyFingerprint() {
-//   S erial.println(serverSetup.aioServer);
-//   if (! client.connect(serverSetup.aioServer, serverSetup.aioServerPort)) {
-//     Serial.println(F("Connection failed."));
-//     while(1);
-//   }
-//   if (client.verify(aioSslFingreprint, serverSetup.aioServer)) {
-//     Serial.println(F("Connection secure."));
-//   } else {
-//     Serial.println(F("Connection insecure!"));
-//     while(1);
-//   }
-
-//   client.stop();  //otherwise the MQTT.connected() will return true, because the implementation
-  // just asks the client if there is a connectioni. It actully doesn't check if there was a mqtt connection established.
-}

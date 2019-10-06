@@ -4,11 +4,10 @@
 #include "keys.h" //this file is not versioned and should contain only ssid and password 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <Adafruit_MQTT.h>
-#include <Adafruit_MQTT_Client.h>
 #include "debug.h"
 #include "BatteryMonitor.h"
 #include "MeasurementProvider.h"
+#include <PubSubClient.h>
 
 const int powerLowerThanWarningThresholds[] = {490, 480, 470}; //round(vcc * 10)
 const byte powerLowerThanWarningThresholdCount = 3;
@@ -33,13 +32,10 @@ class WifiSetup {
 
 class ServerSetup {
     public: 
-        ServerSetup(const char server[], int port, const char usernme[], const char key[]) 
-            : aioServer(server), aioServerPort(port), aioUsername(usernme), aioKey(key) {};
-        const char* aioServer;
-        const int aioServerPort;
-        const char* aioUsername;
-        const char* aioKey;
-        
+        ServerSetup(const char server[], int port) 
+            : mqttServer(server), mqttServerPort(port){};
+        const char* mqttServer;
+        const int mqttServerPort;
 };
 
 class FeedsSetup {
@@ -79,14 +75,7 @@ class DataReporter {
             BatteryMonitor* battery
         ) : wifiSetup(wifi),
             serverSetup(server),
-            mqtt(&client, server.aioServer, server.aioServerPort, server.aioUsername, server.aioKey),
-            mqttTempFeed(&mqtt,feed.tempfeed, MQTT_QOS_1),
-            mqttHumFeed(&mqtt,feed.humfeed, MQTT_QOS_1),
-            mqttVccFeed(&mqtt,feed.vccfeed, MQTT_QOS_1),
-            mqttVccRawFeed(&mqtt,feed.vccrawfeed, MQTT_QOS_1),
-            mqttVccWarning(&mqtt,feed.vccwarning, MQTT_QOS_1),
-            mqttPhotoVFeed(&mqtt,feed.photovfeed, MQTT_QOS_1),
-            mqttPressureFeed(&mqtt,feed.pressurefeed, MQTT_QOS_1),
+            feedsSetup(feed),
             batteryMonitor(battery)
         {};
         /** Call in setup() */
@@ -97,20 +86,13 @@ class DataReporter {
     private:
         const WifiSetup wifiSetup;
         const ServerSetup serverSetup;
+        const FeedsSetup feedsSetup;
         WiFiClient client;
-        Adafruit_MQTT_Client mqtt;
-        Adafruit_MQTT_Publish mqttTempFeed;
-        Adafruit_MQTT_Publish mqttHumFeed;
-        Adafruit_MQTT_Publish mqttVccFeed;
-        Adafruit_MQTT_Publish mqttVccRawFeed;
-        Adafruit_MQTT_Publish mqttVccWarning;
-        Adafruit_MQTT_Publish mqttPhotoVFeed;
-        Adafruit_MQTT_Publish mqttPressureFeed;
+        PubSubClient pubSubClient;
         BatteryMonitor* batteryMonitor;
         void MQTTConect();
         void MQTTDisconnect();
         void WIFIConect(const RoomMonitorState& state);
-        void verifyFingerprint();
 };
 
 #endif
