@@ -13,8 +13,8 @@
 #include <ArduinoOTA.h>
 #include <ESP8266HTTPClient.h>
 
-const byte tempSensAddr = 0x45; 
-const byte ligthSensAddr = 0x40;//sht30 - 0x23, sht21 0x40
+const byte tempSensAddr = 0x40; //sht21 Ox40, sht3; Ox45 (?)
+const byte ligthSensAddr = 0x23;
 // //1min
 // const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
@@ -111,6 +111,47 @@ void storeState() {
     delay(2);
 }
 
+void scanadr() {
+    byte error, address;
+  int nDevices;
+ 
+  Serial.println("Scanning...");
+ 
+  nDevices = 0;
+  for(address = 1; address < 127; address++ )
+  {
+    // The i2c_scanner uses the return value of
+    // the Write.endTransmisstion to see if
+    // a device did acknowledge to the address.
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+ 
+    if (error == 0)
+    {
+      Serial.print("I2C device found at address 0x");
+      if (address<16)
+        Serial.print("0");
+      Serial.print(address,HEX);
+      Serial.println("  !");
+ 
+      nDevices++;
+    }
+    else if (error==4)
+    {
+      Serial.print("Unknown error at address 0x");
+      if (address<16)
+        Serial.print("0");
+      Serial.println(address,HEX);
+    }    
+  }
+  if (nDevices == 0)
+    Serial.println("No I2C devices found\n");
+  else
+    Serial.println("done\n");
+ 
+  delay(5000);           // wait 5 seconds for next scan
+}
+
 /**
  * Everything happens in setup, we have nothing in loop because we are sleeping all the time.
  */ 
@@ -127,7 +168,6 @@ void setup() {
     pinMode(D3, INPUT_PULLUP);
 
     //restor state from rtc memory 
-
     ESP.rtcUserMemoryRead(0, reinterpret_cast<uint32_t*>(&oldState), sizeof(oldState));
 
     if (oldState.magic != deepSleepStateMagic) { //FIRST RUN
@@ -167,18 +207,21 @@ void setup() {
 
     Serial.println("No OTA update");
     //no ota update (there will be restart after OTA or manual restart if ota was not performed)
-    Wire.begin(/*sda*/D2, /*scl*/D1);
+    Wire.begin(/*sda*/4, /*scl*/5); //GPIO4, GPIO5
     Wire.setTimeout(500);
+    scanadr();
     measurementReady = measurement.begin();
     if (!measurementReady) {
         Serial.println("Unable to initialize measurement");
     } else {
         // do measurements
+        Serial.println("Do measurements");
         bool measureRes = measurement.doMeasurements();
         const MeasurementsData measurementData = measurement.getCurrentMeasurements();
         if (!measureRes) {
             Serial.println(F("Unable to measure"));
         } else {
+            Serial.println("Send measurements");
             // start wifi and mqtt
             reporter.begin(oldState);
             // report
@@ -196,6 +239,8 @@ void setup() {
     //sleep deeply
     ESP.deepSleep(sleepForUs, WAKE_RF_DISABLED);
 }
+
+
 
 void loop() {
     // NOP

@@ -10,6 +10,7 @@ MeasurementProvider::MeasurementProvider(uint8_t tempSensAddr,  uint8_t lightSen
 bool MeasurementProvider::begin() {
     bool lsStatus = lightSensor.begin(BH1750::ONE_TIME_HIGH_RES_MODE); //goes to sleep after mea
     // bool bmpStatus = bmp.begin(0x76);
+    // return true;
     return lsStatus;// && bmpStatus;
 }
 
@@ -38,11 +39,14 @@ bool MeasurementProvider::doMeasurements() {
     //     return false;
     // }
     //SHT21
-    measureTempSTH21();
+    data.temperature = 0;
+    data.humidity = 0;
+    // measureTempSTH21();
 
     // measur pressure
     // data.bmpTemp = bmp.readTemperature();
     // data.pressure = bmp.readPressure();
+    data.bmpTemp = 0;
     data.pressure = 0;
     // measure lipht
     data.lightLevel = lightSensor.readLightLevel();
@@ -97,7 +101,7 @@ float MeasurementProvider::readFloatSHT21(uint8_t command)
 
     Wire.requestFrom(tempSensAddress, 3);
     while(Wire.available() < 3) {
-      delay(1);
+      delay(10);
     }
 
     // return result
