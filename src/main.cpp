@@ -15,7 +15,7 @@
 
 const byte tempSensAddr = 0x40; //sht21 Ox40, sht3; Ox45 (?)
 const byte ligthSensAddr = 0x23;
-// //1min
+//1min
 // const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
 const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
@@ -31,6 +31,7 @@ const char vccwarning[] = "home/" ROOM_NAME "/vcc-warning";
 const char photovfeed[] = "home/" ROOM_NAME "/light";
 const char pressurefeed[] = "home/" ROOM_NAME "/pressure";
 const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
+const float analogVccToRealCoeficient = 0.0047705311; // Second Prototype: 0.004904651; D1 Mini: 0.00611
 bool measurementReady = false;
 
 // IPAddress ip(192, 168, 178, 33); //bedroom (old prototype)
@@ -59,7 +60,7 @@ DataReporter reporter(
     &batteryMonitor
 );
 
-MeasurementProvider measurement(tempSensAddr, ligthSensAddr);
+MeasurementProvider measurement(tempSensAddr, ligthSensAddr, analogVccToRealCoeficient);
 
 void otaInitialize() {
     // Initialise OTA in case there is a software upgrade
@@ -71,16 +72,17 @@ void otaInitialize() {
     });
     ArduinoOTA.onError([](ota_error_t error) {
         Serial.printf("Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR)
+        if (error == OTA_AUTH_ERROR) { 
             Serial.println("Auth Failed");
-        else if (error == OTA_BEGIN_ERROR)
+        } else if (error == OTA_BEGIN_ERROR) { 
             Serial.println("Begin Failed");
-        else if (error == OTA_CONNECT_ERROR)
+        } else if (error == OTA_CONNECT_ERROR) {
             Serial.println("Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR)
+        } else if (error == OTA_RECEIVE_ERROR) {
             Serial.println("Receive Failed");
-        else if (error == OTA_END_ERROR)
+        } else if (error == OTA_END_ERROR) {
             Serial.println("End Failed");
+        }
     });
 
     ArduinoOTA.begin();
@@ -144,10 +146,11 @@ void scanadr() {
       Serial.println(address,HEX);
     }    
   }
-  if (nDevices == 0)
+  if (nDevices == 0) {
     Serial.println("No I2C devices found\n");
-  else
+  } else {
     Serial.println("done\n");
+  }
  
   delay(5000);           // wait 5 seconds for next scan
 }

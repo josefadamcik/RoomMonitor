@@ -24,16 +24,18 @@ class MeasurementsData {
 
 class MeasurementProvider {
     public:
-        MeasurementProvider(uint8_t tempSensAddr,  uint8_t lightSensAddr);
+        MeasurementProvider(uint8_t tempSensAddr,  uint8_t lightSensAddr, float analogVCCToRealCoeficient);
         const MeasurementsData& getCurrentMeasurements();
         /** @return true for success. */
         bool begin();
         /** @return true for success. */
         bool doMeasurements();
         RoomMonitorState getWifiSetup();
-    private : const uint8_t tempSensAddress;
-        // Adafruit_BMP280 bmp; 
+    private : 
+        const uint8_t tempSensAddress;
         BH1750 lightSensor;
+        const float analogVCCToRealCoeficient;
+        // Adafruit_BMP280 bmp; 
         MeasurementsData data;
         uint8_t measureTempSTH30();
         uint8_t measureTempSTH21(); 
