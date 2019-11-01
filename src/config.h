@@ -4,6 +4,7 @@
 #define USE_SHT21
 // #define USE_SHT30
 
+
 //#define ROOM_NAME "bedroom"
 #define ROOM_NAME "livingroom"
 
