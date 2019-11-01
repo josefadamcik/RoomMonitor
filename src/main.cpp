@@ -1,19 +1,24 @@
 #include "keys.h" //this file is not versioned and should contain only ssid and password 
 #include <Arduino.h>
+#include "config.h"
 #include <ESP8266WiFi.h>
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <SPI.h>
 #include <Ticker.h>
 #include <BH1750.h>
-#include "debug.h"
 #include "BatteryMonitor.h"
 #include "MeasurementProvider.h"
 #include "DataReporter.h"
 #include <ArduinoOTA.h>
 #include <ESP8266HTTPClient.h>
 
-const byte tempSensAddr = 0x40; //sht21 Ox40, sht3; Ox45 (?)
+#ifdef USE_SHT21 
+const byte tempSensAddr = 0x40;
+#endif
+#ifdef USE_SHT30
+const byte tempSensAddr = 0x45;
+#endif  
 const byte ligthSensAddr = 0x23;
 //1min
 // const unsigned long sleepForUs = 60 * 1000000; //1m

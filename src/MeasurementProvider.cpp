@@ -15,10 +15,13 @@ MeasurementProvider::MeasurementProvider(
      { }
 
 bool MeasurementProvider::begin() {
-    bool lsStatus = lightSensor.begin(BH1750::ONE_TIME_HIGH_RES_MODE); //goes to sleep after mea
-    // bool bmpStatus = bmp.begin(0x76);
-    // return true;
-    return lsStatus;// && bmpStatus;
+    bool lsStatus = lightSensor.begin(BH1750::ONE_TIME_HIGH_RES_MODE); //goes to sleep after measurement
+    #ifdef USE_BMP280
+    bool bmpStatus = bmp.begin(0x76);
+    return lsStatus && bmpStatus;
+    #else
+    return lsStatus;
+    #endif
 }
 
 const MeasurementsData& MeasurementProvider::getCurrentMeasurements(){
@@ -29,38 +32,48 @@ bool MeasurementProvider::doMeasurements() {
     //measure battery voltage
     data.voltageRaw = analogRead(A0);
     data.voltage = analogToVoltage(data.voltageRaw);
-    //SHT-30 measure temp and humidity
-    // byte tempMeasureRes;
-    // int retryMeasurement = 3;
-    // do {
-    //     retryMeasurement--;
-    //     tempMeasureRes = measureTempSTH30();
-    //     if (tempMeasureRes != 0) {
-    //         Serial.println(F("Unable to measure temperature"));
-    //         Serial.println(tempMeasureRes);
-    //         delay(100);
-    //     }
-    // } while (tempMeasureRes != 0 && retryMeasurement > 0);
 
-    // if (tempMeasureRes != 0) {
-    //     return false;
-    // }
+    #ifdef USE_SHT30
+    //SHT-30 measure temp and humidity
+    byte tempMeasureRes;
+    int retryMeasurement = 3;
+    do {
+        retryMeasurement--;
+        tempMeasureRes = measureTempSTH30();
+        if (tempMeasureRes != 0) {
+            Serial.println(F("Unable to measure temperature"));
+            Serial.println(tempMeasureRes);
+            delay(100);
+        }
+    } while (tempMeasureRes != 0 && retryMeasurement > 0);
+
+    if (tempMeasureRes != 0) {
+        return false;
+    }
+    #endif
+
+    #ifdef USE_SHT21
     //SHT21
     data.temperature = 0;
     data.humidity = 0;
     measureTempSTH21();
+    #endif
 
+    #ifdef USE_BMP280
     // measur pressure
-    // data.bmpTemp = bmp.readTemperature();
-    // data.pressure = bmp.readPressure();
+    data.bmpTemp = bmp.readTemperature();
+    data.pressure = bmp.readPressure();
+    #else
     data.bmpTemp = 0;
     data.pressure = 0;
+    #endif
+    
     // measure lipht
     data.lightLevel = lightSensor.readLightLevel();
-
     return true;
 }
 
+#ifdef USE_SHT30
 byte MeasurementProvider::measureTempSTH30() {
     unsigned int data[6];
     Wire.beginTransmission(tempSensAddress);
@@ -89,13 +102,16 @@ byte MeasurementProvider::measureTempSTH30() {
 
     return 0;
 }
+#endif
 
+#ifdef USE_SHT21
 uint8_t MeasurementProvider::measureTempSTH21() {
     // Convert the data
     this->data.humidity = (-6.0 + 125.0 / 65536.0 * readFloatSHT21(SHT21_TRIGGER_HUMD_MEASURE_HOLD));
     this->data.temperature = (-46.85 + 175.72 / 65536.0 * readFloatSHT21(SHT21_TRIGGER_TEMP_MEASURE_HOLD));
     return 0;
 }
+
 
 float MeasurementProvider::readFloatSHT21(uint8_t command)
 {
@@ -117,6 +133,7 @@ float MeasurementProvider::readFloatSHT21(uint8_t command)
 	result &= ~0x0003;   // clear two low bits (status bits)
     return (float)result;
 }
+#endif
 
 float MeasurementProvider::analogToVoltage(int analog) {
     return analog * analogVCCToRealCoeficient;
@@ -134,8 +151,6 @@ void MeasurementsData::printToSerial() const {
     Serial.print(pressure);
     Serial.print(F(", vcc: "));
     Serial.print(voltage);
-    // Serial.print(F(", avg vcc: "));
-    // Serial.print(voltageSum / voltageCount);
     Serial.print(F(", vcc raw: "));
     Serial.print(voltageRaw);
     Serial.print(F(", light: "));

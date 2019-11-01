@@ -2,11 +2,13 @@
 #define MEASUREMENTS_PROVIDER_h
 
 #include <Arduino.h>
+#include "config.h"
 #include <BH1750.h>
-// #include <Adafruit_BMP280.h>
+#ifdef USE_BMP280
+#include <Adafruit_BMP280.h>
+#endif
 #include <Adafruit_Sensor.h>
 #include "RoomMonitorState.h"
-#include "debug.h"
 
 class MeasurementsData {
     public:
@@ -35,11 +37,17 @@ class MeasurementProvider {
         const uint8_t tempSensAddress;
         BH1750 lightSensor;
         const float analogVCCToRealCoeficient;
-        // Adafruit_BMP280 bmp; 
+        #ifdef USE_BMP280
+        Adafruit_BMP280 bmp; 
+        #endif
         MeasurementsData data;
+        #ifdef USE_SHT30
         uint8_t measureTempSTH30();
+        #endif
+        #ifdef USE_SHT21
         uint8_t measureTempSTH21(); 
         float readFloatSHT21(uint8_t command);
+        #endif
         float analogToVoltage(int analog);
 };
 
