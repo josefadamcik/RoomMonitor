@@ -26,7 +26,7 @@ RoomMonitorState DataReporter::getState(bool baterryWarningTriggered) {
 }
 
 void DataReporter::closeConnections() {
-    pubSubClient.disconnect();
+    MQTTDisconnect();
 }
 
 void DataReporter::doReport(const MeasurementsData& measurementData) {

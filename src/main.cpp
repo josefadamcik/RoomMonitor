@@ -202,10 +202,8 @@ void setup() {
     Serial.println(sleepForUs);
     Serial.flush();
     //sleep deeply
-    ESP.deepSleep(sleepForUs, WAKE_RF_DISABLED);
+    ESP.deepSleepInstant(sleepForUs, WAKE_RF_DISABLED);
 }
-
-
 
 void loop() {
     // NOP
