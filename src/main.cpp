@@ -69,7 +69,7 @@ MeasurementProvider measurement(tempSensAddr, ligthSensAddr, analogVccToRealCoef
 
 void otaInitialize() {
     // Initialise OTA in case there is a software upgrade
-    ArduinoOTA.setHostname("roommonitor.local");
+    ArduinoOTA.setHostname(ROOM_NAME ".roommonitor.local");
     ArduinoOTA.onStart([]() { Serial.println("Start"); });
     ArduinoOTA.onEnd([]() { Serial.println("\nEnd"); });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
