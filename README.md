@@ -16,6 +16,7 @@ PlatformIO is used to build this project but it should be easy to convert it bac
 More information can be found in this series of blog posts:
 
 - [ESP8266 based room-conditions monitor, Part 1](https://josef-adamcik.cz/electronics/esp8266-based-room-conditions-monitor-part-1.html)
+- [ESP8266 based room-conditions monitor, part 2: PCB](https://josef-adamcik.cz/electronics/esp8266-based-room-conditions-monitor-part-2.html)
 
 There is also another projects for a remote MQTT display for measured data:
 
