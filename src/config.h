@@ -5,8 +5,8 @@
 // #define USE_SHT30
 
 
-//#define ROOM_NAME "bedroom"
-#define ROOM_NAME "livingroom"
+#define ROOM_NAME "bedroom"
+// #define ROOM_NAME "livingroom"
 
 #define DEBUG true
 #define Serial if(DEBUG)Serial

@@ -24,7 +24,7 @@ const byte ligthSensAddr = 0x23;
 // const unsigned long sleepForUs = 60 * 1000000; //1m
 //5min
 const unsigned long sleepForUs = 5 * 60 * 1000000; //5m
-const char mqttServer[] = "192.168.178.31";
+const char mqttServer[] = "192.168.178.58";
 const int mqttServerport = 1883; 
 const char ssid[] = MYSSID; //put #define MYSSID "xyz" in keys.h
 const char password[] = MYPASS; //put #define MYPASS "blf" in keys.h
@@ -39,8 +39,8 @@ const char msgWifiConnecting[] PROGMEM = "WIFI connecting to: ";
 const float analogVccToRealCoeficient = 0.0047705311; // Second Prototype: 0.004904651; D1 Mini: 0.00611
 bool measurementReady = false;
 
-// IPAddress ip(192, 168, 178, 33); //bedroom (old prototype)
-IPAddress ip(192, 168, 178, 50);  //living-room (new pcb)
+IPAddress ip(192, 168, 178, 51); //bedroom 
+// IPAddress ip(192, 168, 178, 50);  //living-room 
 IPAddress gateway(192, 168, 178, 1);
 IPAddress subnet(255, 255, 255, 0);
 
