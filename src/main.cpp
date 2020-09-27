@@ -46,7 +46,7 @@ IPAddress subnet(255, 255, 255, 0);
 
 const uint32_t deepSleepStateMagic = 0x8af2ba12;
 
-BatteryMonitor batteryMonitor(290,360);
+BatteryMonitor batteryMonitor(/* trigger low voltage */ 320, /* reset low voltage */ 360);
 
 RoomMonitorState oldState;
 
