@@ -81,7 +81,7 @@ void DataReporter::MQTTConect() {
 
     int8_t ret = 0;
     uint8_t retries = 3;
-    while (!pubSubClient.connect("RoomMonitor." ROOM_NAME)) { // connect will return 0 for connected
+    while (!pubSubClient.connect("RoomMonitor." ROOM_NAME, serverSetup.mqttLogin, serverSetup.mqttPass)) { // connect will return 0 for connected
         ret = pubSubClient.state();
         Serial.println(F("Retr MQTT connection in 1 second..."));
         Serial.println(ret);

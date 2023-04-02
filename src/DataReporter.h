@@ -32,10 +32,12 @@ class WifiSetup {
 
 class ServerSetup {
     public: 
-        ServerSetup(const char server[], int port) 
-            : mqttServer(server), mqttServerPort(port){};
+        ServerSetup(const char server[], int port, const char login[], const char pass[]) 
+            : mqttServer(server), mqttServerPort(port), mqttLogin(login), mqttPass(pass) {};
         const char* mqttServer;
         const int mqttServerPort;
+        const char* mqttLogin;
+        const char* mqttPass;
 };
 
 class FeedsSetup {
